@@ -153,7 +153,7 @@ struct HistoryView: View {
             }
             .navigationTitle("Run History")
             .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
+                ToolbarItemGroup(placement: .navigationBarTrailing) {
                     if !runStore.runs.isEmpty {
                         Button("Clear All", role: .destructive) {
                             runStore.clearAll()
