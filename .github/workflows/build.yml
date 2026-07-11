@@ -1,0 +1,46 @@
+name: Build IPA
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Build archive (unsigned)
+        run: |
+          xcodebuild -project SpeedApp.xcodeproj \
+            -scheme SpeedApp \
+            -sdk iphoneos \
+            -configuration Release \
+            -archivePath build/SpeedApp.xcarchive \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            archive
+
+      - name: Package unsigned IPA
+        run: |
+          mkdir -p build/Payload
+          cp -r build/SpeedApp.xcarchive/Products/Applications/SpeedApp.app build/Payload/
+          cd build
+          zip -r SpeedApp.ipa Payload
+          cd ..
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SpeedApp-ipa
+          path: build/SpeedApp.ipa
+          retention-days: 90
