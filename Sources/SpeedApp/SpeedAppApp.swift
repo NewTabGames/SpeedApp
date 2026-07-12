@@ -27,6 +27,7 @@ struct SpeedAppApp: App {
                 .onAppear {
                     locationManager.smoothingAlpha = settings.smoothing.alpha
                     locationManager.applyAccuracyMode(settings.gpsAccuracy)
+                    locationManager.autoPauseEnabled = settings.autoPauseEnabled
                     navigation.speechRate = Float(settings.voiceSpeechRate)
                 }
                 .onChange(of: settings.smoothing) { _, newValue in
@@ -34,6 +35,9 @@ struct SpeedAppApp: App {
                 }
                 .onChange(of: settings.gpsAccuracy) { _, newValue in
                     locationManager.applyAccuracyMode(newValue)
+                }
+                .onChange(of: settings.autoPauseEnabled) { _, newValue in
+                    locationManager.autoPauseEnabled = newValue
                 }
                 .onChange(of: settings.voiceSpeechRate) { _, newValue in
                     navigation.speechRate = Float(newValue)

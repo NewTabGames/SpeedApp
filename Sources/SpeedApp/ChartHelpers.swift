@@ -19,6 +19,20 @@ struct ActivityView: UIViewControllerRepresentable {
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
+/// Formats elapsed seconds into something readable (2:05, or 1:12:30 for long rides).
+/// Chart axes store raw seconds, which is meaningless to look at ("750" is 12.5 minutes).
+func elapsedLabel(_ seconds: Double) -> String {
+    let total = Int(seconds.rounded())
+    let hours = total / 3600
+    let minutes = (total % 3600) / 60
+    let secs = total % 60
+
+    if hours > 0 {
+        return String(format: "%d:%02d:%02d", hours, minutes, secs)
+    }
+    return String(format: "%d:%02d", minutes, secs)
+}
+
 /// Thins a sample array down to a bounded number of evenly-spaced points for drawing.
 ///
 /// At one GPS fix per second, an hour-long ride produces ~3,600 samples. Rendering all of
@@ -73,6 +87,9 @@ struct InteractiveSpeedChart: View {
     var height: CGFloat = 220
     var showAxes: Bool = true
     var lineStyle: ChartLineStyle = .smooth
+    /// When set (i.e. for a saved ride), the drag readout also shows the time of day.
+    /// Live recordings leave this nil since "now" isn't meaningful to display.
+    var startDate: Date? = nil
 
     @State private var selectedTime: Double?
 
@@ -85,13 +102,20 @@ struct InteractiveSpeedChart: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             if let selectedTime, let nearest = nearestSample(to: selectedTime) {
-                HStack {
+                HStack(spacing: 6) {
                     Text(String(format: "%.0f %@", unit.convert(fromMph: nearest.mph), unit.rawValue))
                         .font(.headline)
                         .foregroundStyle(accent)
-                    Text("at " + timeString(nearest.offsetSeconds))
+                    Text("at \(elapsedLabel(nearest.offsetSeconds))")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
+                    // For a saved ride we know when it started, so we can also show the
+                    // actual time of day this moment happened.
+                    if let startDate {
+                        Text("(\(clockLabel(start: startDate, offset: nearest.offsetSeconds)))")
+                            .font(.subheadline)
+                            .foregroundStyle(.tertiary)
+                    }
                 }
                 .transition(.opacity)
             } else if showAxes {
@@ -130,7 +154,19 @@ struct InteractiveSpeedChart: View {
             }
             .chartXSelection(value: $selectedTime)
             .frame(height: height)
-            .chartXAxis(showAxes ? .visible : .hidden)
+            .chartXAxis {
+                if showAxes {
+                    AxisMarks { value in
+                        AxisGridLine()
+                        AxisValueLabel {
+                            if let seconds = value.as(Double.self) {
+                                Text(elapsedLabel(seconds))
+                            }
+                        }
+                    }
+                }
+            }
+            .chartXAxisLabel(showAxes ? "elapsed time" : "")
             .chartYAxis {
                 if showAxes {
                     AxisMarks { _ in
@@ -151,9 +187,8 @@ struct InteractiveSpeedChart: View {
         samples.min(by: { abs($0.offsetSeconds - time) < abs($1.offsetSeconds - time) })
     }
 
-    private func timeString(_ seconds: Double) -> String {
-        let mins = Int(seconds) / 60
-        let secs = Int(seconds) % 60
-        return String(format: "%d:%02d", mins, secs)
+    private func clockLabel(start: Date, offset: Double) -> String {
+        let moment = start.addingTimeInterval(offset)
+        return moment.formatted(date: .omitted, time: .shortened)
     }
 }

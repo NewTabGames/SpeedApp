@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import UIKit
 import MapKit
 import Combine
 
@@ -51,6 +52,19 @@ enum AccentTheme: String, CaseIterable, Codable, Identifiable {
         case .pink: return .pink
         }
     }
+
+    /// Core Graphics drawing (like the route image export) needs a UIColor, not a SwiftUI Color.
+    var uiColor: UIColor {
+        switch self {
+        case .orange: return .systemOrange
+        case .green: return .systemGreen
+        case .blue: return .systemBlue
+        case .red: return .systemRed
+        case .purple: return .systemPurple
+        case .teal: return .systemTeal
+        case .pink: return .systemPink
+        }
+    }
 }
 
 enum SmoothingLevel: String, CaseIterable, Codable, Identifiable, Equatable {
@@ -94,6 +108,15 @@ enum MapStyleOption: String, CaseIterable, Codable, Identifiable {
         switch self {
         case .standard: return .standard
         case .satellite: return .imagery
+        case .hybrid: return .hybrid
+        }
+    }
+
+    /// MKMapSnapshotter (used for the route image export) predates MapStyle and takes MKMapType.
+    var mkMapType: MKMapType {
+        switch self {
+        case .standard: return .standard
+        case .satellite: return .satellite
         case .hybrid: return .hybrid
         }
     }
@@ -148,6 +171,12 @@ final class SettingsStore: ObservableObject {
     @Published var confirmBeforeClearing: Bool {
         didSet { UserDefaults.standard.set(confirmBeforeClearing, forKey: Keys.confirmClear) }
     }
+    @Published var autoPauseEnabled: Bool {
+        didSet { UserDefaults.standard.set(autoPauseEnabled, forKey: Keys.autoPause) }
+    }
+    @Published var batteryTrackingEnabled: Bool {
+        didSet { UserDefaults.standard.set(batteryTrackingEnabled, forKey: Keys.batteryTracking) }
+    }
     /// 0.3 (slow/clear) to 0.6 (fast/natural). AVSpeechUtterance default is ~0.5.
     @Published var voiceSpeechRate: Double {
         didSet { UserDefaults.standard.set(voiceSpeechRate, forKey: Keys.voiceRate) }
@@ -166,6 +195,8 @@ final class SettingsStore: ObservableObject {
         static let chartLineStyle = "settings.chartLineStyle"
         static let haptics = "settings.haptics"
         static let confirmClear = "settings.confirmClear"
+        static let autoPause = "settings.autoPause"
+        static let batteryTracking = "settings.batteryTracking"
         static let voiceRate = "settings.voiceRate"
     }
 
@@ -183,6 +214,8 @@ final class SettingsStore: ObservableObject {
         chartLineStyle = ChartLineStyle(rawValue: d.string(forKey: Keys.chartLineStyle) ?? "") ?? .smooth
         hapticsEnabled = d.object(forKey: Keys.haptics) as? Bool ?? true
         confirmBeforeClearing = d.object(forKey: Keys.confirmClear) as? Bool ?? true
+        autoPauseEnabled = d.object(forKey: Keys.autoPause) as? Bool ?? false
+        batteryTrackingEnabled = d.object(forKey: Keys.batteryTracking) as? Bool ?? false
         voiceSpeechRate = d.object(forKey: Keys.voiceRate) as? Double ?? 0.5
     }
 }

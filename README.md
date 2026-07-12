@@ -2,7 +2,7 @@
 
 A GPS speedometer, ride recorder, and turn-by-turn navigator for electric scooters. No paywalls, no subscriptions.
 
-**Version 2.0** — Requires iOS 18 or newer.
+**Version 2.1** — Requires iOS 18 or newer.
 
 ## Features
 
@@ -14,8 +14,12 @@ A GPS speedometer, ride recorder, and turn-by-turn navigator for electric scoote
 
 ### Record
 - Log a ride with a live speed graph
-- Tracks duration, current/max/average speed, and distance
+- Tracks duration, current/max/average speed, distance, and elevation gain/loss
+- Pause and resume mid-ride
+- Optional auto-pause when you stop moving
+- Optional battery logging (start/end percentage)
 - Drag across the graph to see exact speed at any point
+- Graph axes show elapsed time (m:ss) and speed
 - Optionally keeps the screen awake
 
 ### Map
@@ -24,10 +28,30 @@ A GPS speedometer, ride recorder, and turn-by-turn navigator for electric scoote
 - Spoken turn-by-turn directions with adjustable voice speed and a mute toggle
 
 ### History
+Split into two sections:
+
+**Rides**
 - Every saved ride with a route map showing where you went
-- Full-screen interactive speed graph
-- Export any ride's graph as a PNG
+- Rename any ride; sort by date, distance, top speed, or duration; search by name
+- Trip replay — watch a marker retrace your route with the speed graph scrubbing in sync
+- Full-screen interactive speed graph — dragging shows speed, elapsed time, and time of day
+- Export the route map as a PNG, with your path, start/end markers, and ride stats
+- Export the speed graph as a PNG
+- Export a single ride's raw GPS data as CSV
 - Confirmation prompt before clearing (can be turned off)
+
+**Lifetime**
+- Total rides, distance, time, top speed, average speed, longest ride, total climb
+- Estimated range per charge, once you've logged battery on a few rides
+
+**CSV export** — two formats, both from the share menus:
+
+| Export | Where | One row per | Columns |
+|---|---|---|---|
+| Rides summary | History → ⋯ menu | Ride | date, name, duration, distance, max/avg speed, elevation gain/loss, battery start/end/used, sample count |
+| Ride data | Ride Detail → share menu | GPS reading | elapsed seconds, timestamp, speed, latitude, longitude, altitude |
+
+Both respect your unit setting (mph/mi or km/h/km), and column headers say which.
 
 ### Settings
 - Units: MPH or KM/H
@@ -38,6 +62,8 @@ A GPS speedometer, ride recorder, and turn-by-turn navigator for electric scoote
 - Speed smoothing: Responsive / Balanced / Smooth
 - GPS mode: High Accuracy or Battery Saver
 - Navigation voice speed
+- Auto-pause when stopped
+- Battery tracking
 - Haptic feedback toggle
 - Keep screen awake toggle
 - Confirm before clearing toggle
@@ -55,6 +81,9 @@ A GPS speedometer, ride recorder, and turn-by-turn navigator for electric scoote
 | `SettingsStore.swift` | User preferences |
 | `ChartHelpers.swift` | Interactive chart, sparkline, downsampling, share sheet |
 | `GraphDetailView.swift` | Full-screen graph with PNG export |
+| `MapExporter.swift` | Renders a ride's route map to a shareable PNG |
+| `TripReplayView.swift` | Animated playback of a saved ride |
+| `CSVExporter.swift` | Ride summary and raw sample CSV export |
 
 Recordings are stored as JSON in the app's Documents directory. All data stays on your device.
 
@@ -92,11 +121,26 @@ open SpeedApp.xcodeproj
 - Navigation uses Apple's driving routes. There's no scooter-specific routing in MapKit, so it may route onto roads that aren't ideal for a scooter.
 - Navigation does not reroute if you go off-path. It keeps guiding along the original route.
 - Graphs are downsampled for display on long rides. Drag-to-inspect still reads full-resolution data.
+- Exporting a route map downloads map tiles, so it needs a network connection and takes a second or two.
+- GPS altitude is noisier than horizontal position. Elevation numbers only count changes above ~1.5 m and should be treated as approximate.
+- Battery range estimates need at least 3 logged rides and get better with more. They assume your riding is roughly consistent — a hilly ride will drain faster than the estimate suggests.
+- Pausing stops collecting data entirely. If you move while paused, the route map draws a straight line across the gap, and that distance isn't counted.
 
 ## Changelog
 
+**2.1**
+- CSV export (rides summary and per-ride raw data)
+- History split into Rides and Lifetime Totals
+- Rename, sort, and search rides
+- Elevation gain/loss tracking
+- Pause/resume, plus optional auto-pause when stopped
+- Battery tracking with range estimation
+- Trip replay
+
 **2.0**
 - Map tab with destination search, tap/long-press to set a destination, and spoken turn-by-turn
+- Route map export (PNG with path, markers, and stats)
+- Graph axes labeled with elapsed time instead of raw seconds
 - Distance tracking and route maps for saved rides
 - Interactive graphs with drag-to-inspect and PNG export
 - Settings: theme, map style, GPS mode, graph style, voice speed, haptics, confirm-before-clear

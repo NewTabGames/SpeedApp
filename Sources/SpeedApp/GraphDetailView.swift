@@ -16,7 +16,8 @@ struct GraphDetailView: View {
                     unit: settings.unit,
                     accent: settings.accent.color,
                     height: 320,
-                    lineStyle: settings.chartLineStyle
+                    lineStyle: settings.chartLineStyle,
+                    startDate: recording.date
                 )
                 .padding(.horizontal)
                 .padding(.top, 8)
@@ -130,6 +131,17 @@ private struct ExportableGraphImage: View {
             }
             .frame(height: 260)
             .chartYAxisLabel(settings.unit.rawValue.lowercased())
+            .chartXAxisLabel("elapsed time")
+            .chartXAxis {
+                AxisMarks { value in
+                    AxisGridLine()
+                    AxisValueLabel {
+                        if let seconds = value.as(Double.self) {
+                            Text(elapsedLabel(seconds))
+                        }
+                    }
+                }
+            }
             .chartYAxis {
                 AxisMarks { _ in
                     AxisGridLine()
