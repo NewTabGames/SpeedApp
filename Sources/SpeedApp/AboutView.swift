@@ -119,8 +119,12 @@ struct AboutView: View {
                 detail: "Optional. Enter your scooter's battery level before and after a ride. After a few rides the app estimates your range."
             ),
             Feature(
+                name: "Records with the screen off",
+                detail: "Keeps logging speed, distance, and route while your phone is locked or in your pocket. A blue indicator shows in the status bar while it's tracking in the background."
+            ),
+            Feature(
                 name: "Keep screen awake",
-                detail: "Optional. Stops your phone locking mid-ride."
+                detail: "Optional. Stops your phone locking mid-ride if you'd rather watch the live readout."
             )
         ]),
 
@@ -223,6 +227,7 @@ struct AboutView: View {
         "Navigation uses Apple's driving routes — there's no scooter-specific routing available, so it may occasionally send you down a road that isn't ideal.",
         "Rerouting needs a data connection. Without one, it keeps guiding you along the original route.",
         "Battery range estimates need at least 3 logged rides and get better with more. They assume your riding stays fairly consistent.",
-        "Exporting a route map needs an internet connection, since it downloads map tiles."
+        "Exporting a route map needs an internet connection, since it downloads map tiles.",
+        "Background recording needs Always location permission. If you only grant While Using, recording will pause when the phone locks."
     ]
 }

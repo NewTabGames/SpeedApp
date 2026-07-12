@@ -93,10 +93,18 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
         manager.desiredAccuracy = kCLLocationAccuracyBestForNavigation
         manager.activityType = .fitness
         manager.distanceFilter = kCLDistanceFilterNone
+        // Keeps the little arrow in the status bar while recording in the background, which
+        // iOS requires for background location. Nothing pops up unexpectedly.
+        manager.showsBackgroundLocationIndicator = true
+        // Don't let iOS auto-pause updates when it thinks you've stopped — we handle pausing
+        // ourselves, and its heuristic is tuned for walking/driving, not scooters.
+        manager.pausesLocationUpdatesAutomatically = false
     }
 
     func requestPermission() {
-        manager.requestWhenInUseAuthorization()
+        // "Always" is what allows recording to continue while the phone is locked. iOS first
+        // grants "When In Use" and later prompts to upgrade to Always after seeing background use.
+        manager.requestAlwaysAuthorization()
     }
 
     deinit {
@@ -165,6 +173,10 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
     // MARK: - Recording
 
     func startRecording() {
+        // Allow GPS to keep flowing while the phone is locked or the app is backgrounded.
+        // Only enabled during recording so it's not draining the battery the rest of the time.
+        manager.allowsBackgroundLocationUpdates = true
+
         isRecording = true
         pauseState = .running
         recordingStartDate = Date()
@@ -226,6 +238,8 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
 
         isRecording = false
         pauseState = .running
+        // Ride's over — stop keeping the GPS awake in the background.
+        manager.allowsBackgroundLocationUpdates = false
 
         let duration = Date().timeIntervalSince(start) - pausedAccumulated
         let result = RecordingResult(

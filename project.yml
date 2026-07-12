@@ -15,8 +15,10 @@ targets:
       properties:
         UILaunchScreen: {}
         CFBundleDisplayName: "Epstein's GPS"
-        NSLocationWhenInUseUsageDescription: "SpeedApp uses your location to measure your current speed in MPH."
-        NSLocationAlwaysAndWhenInUseUsageDescription: "SpeedApp uses your location to measure your current speed in MPH."
+        UIBackgroundModes:
+          - location
+        NSLocationWhenInUseUsageDescription: "Used to measure your speed and record your ride."
+        NSLocationAlwaysAndWhenInUseUsageDescription: "Lets the app keep recording your speed, distance, and route while your phone is locked or in your pocket."
         UIRequiredDeviceCapabilities:
           - armv7
         UISupportedInterfaceOrientations:

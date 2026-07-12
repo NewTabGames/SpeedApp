@@ -17,6 +17,7 @@ A GPS speedometer, ride recorder, and turn-by-turn navigator for electric scoote
 - Tracks duration, current/max/average speed, distance, and elevation gain/loss
 - Pause and resume mid-ride
 - Optional auto-pause when you stop moving
+- Keeps recording while the phone is locked or in your pocket
 - Optional battery logging (start/end percentage)
 - Drag across the graph to see exact speed at any point
 - Graph axes show elapsed time (m:ss) and speed
@@ -126,7 +127,7 @@ open SpeedApp.xcodeproj
 
 ## Limitations
 
-- Location permission is required for any speed reading.
+- Location permission is required for any speed reading. Background recording (with the phone locked) needs "Always" permission — with "While Using" only, recording pauses when the screen locks.
 - iPhone GPS updates about once per second. The displayed number is interpolated between fixes to look smooth, but that's the underlying data rate.
 - Navigation uses Apple's driving routes. There's no scooter-specific routing in MapKit, so it may route onto roads that aren't ideal for a scooter.
 - Rerouting requires a data connection. Without one, guidance continues along the original route.
@@ -139,6 +140,7 @@ open SpeedApp.xcodeproj
 ## Changelog
 
 **2.1**
+- Recording continues while the phone is locked (background location)
 - Fixed music staying quiet the whole time the app was open — it now only dips while speaking a direction
 - Automatic rerouting when you leave the route
 - Turn announcements now warn you before the turn, not just at it
