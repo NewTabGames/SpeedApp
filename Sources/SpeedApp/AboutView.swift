@@ -108,7 +108,7 @@ struct AboutView: View {
             ),
             Feature(
                 name: "Auto-pause",
-                detail: "Optional. Pauses on its own after a few seconds of standing still and resumes when you move. Keeps red lights out of your ride time and average speed."
+                detail: "Optional. Pauses on its own once you've been still for a while, and resumes when you move. Keeps red lights out of your ride time and average speed. You can tune both the speed and the delay in Settings."
             ),
             Feature(
                 name: "Elevation",
@@ -158,7 +158,7 @@ struct AboutView: View {
             ),
             Feature(
                 name: "Rename, sort, and search",
-                detail: "Name a ride from its detail screen or by swiping it in the list. Sort by date, distance, top speed, or duration, and search by name."
+                detail: "Swipe a ride in the list to rename or delete it. Sort by date, distance, top speed, or duration, and search by name."
             ),
             Feature(
                 name: "Trip replay",

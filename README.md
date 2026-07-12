@@ -16,7 +16,7 @@ A GPS speedometer, ride recorder, and turn-by-turn navigator for electric scoote
 - Log a ride with a live speed graph
 - Tracks duration, current/max/average speed, distance, and elevation gain/loss
 - Pause and resume mid-ride
-- Optional auto-pause when you stop moving
+- Optional auto-pause when you stop moving, with adjustable speed threshold and delay
 - Keeps recording while the phone is locked or in your pocket
 - Optional battery logging (start/end percentage)
 - Drag across the graph to see exact speed at any point
@@ -37,7 +37,7 @@ Split into two sections:
 
 **Rides**
 - Every saved ride with a route map showing where you went
-- Rename a ride (from its detail screen or by swiping in the list); sort by date, distance, top speed, or duration; search by name
+- Swipe a ride to rename or delete it; sort by date, distance, top speed, or duration; search by name
 - Trip replay — watch a marker retrace your route with the speed graph scrubbing in sync, in real-time or sped up
 - Full-screen interactive speed graph — dragging shows speed, elapsed time, and time of day
 - Export the route map as a PNG, with your path, start/end markers, and ride stats
@@ -67,7 +67,7 @@ Both respect your unit setting (mph/mi or km/h/km), and column headers say which
 - Speed smoothing: Responsive / Balanced / Smooth
 - GPS mode: High Accuracy or Battery Saver
 - Navigation voice speed
-- Auto-pause when stopped
+- Auto-pause when stopped (adjustable speed threshold and delay)
 - Battery tracking
 - Haptic feedback toggle
 - Keep screen awake toggle
@@ -144,9 +144,9 @@ open SpeedApp.xcodeproj
 ## Changelog
 
 **2.1**
+- Auto-pause speed threshold and delay are now adjustable in Settings
 - Fixed the voice spelling out street abbreviations ("Bull Run D-R" instead of "Bull Run Drive")
 - Trip replay now has a real-time (1x) speed and interpolates for smooth motion
-- Rename is now available from the ride detail screen, not just swipe
 - Choose the navigation voice, with a preview button
 - Tightened GPS filtering to reduce the route drifting onto nearby roads
 - Fixed navigation voice clipping the first words of a direction

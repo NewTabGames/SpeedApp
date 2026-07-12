@@ -174,6 +174,14 @@ final class SettingsStore: ObservableObject {
     @Published var autoPauseEnabled: Bool {
         didSet { UserDefaults.standard.set(autoPauseEnabled, forKey: Keys.autoPause) }
     }
+    /// Speed below which you're considered stopped, in mph.
+    @Published var autoPauseSpeedMph: Double {
+        didSet { UserDefaults.standard.set(autoPauseSpeedMph, forKey: Keys.autoPauseSpeed) }
+    }
+    /// How many seconds below that speed before the recording pauses itself.
+    @Published var autoPauseDelaySeconds: Double {
+        didSet { UserDefaults.standard.set(autoPauseDelaySeconds, forKey: Keys.autoPauseDelay) }
+    }
     @Published var batteryTrackingEnabled: Bool {
         didSet { UserDefaults.standard.set(batteryTrackingEnabled, forKey: Keys.batteryTracking) }
     }
@@ -201,6 +209,8 @@ final class SettingsStore: ObservableObject {
         static let haptics = "settings.haptics"
         static let confirmClear = "settings.confirmClear"
         static let autoPause = "settings.autoPause"
+        static let autoPauseSpeed = "settings.autoPauseSpeed"
+        static let autoPauseDelay = "settings.autoPauseDelay"
         static let batteryTracking = "settings.batteryTracking"
         static let voiceRate = "settings.voiceRate"
         static let voiceIdentifier = "settings.voiceIdentifier"
@@ -221,6 +231,8 @@ final class SettingsStore: ObservableObject {
         hapticsEnabled = d.object(forKey: Keys.haptics) as? Bool ?? true
         confirmBeforeClearing = d.object(forKey: Keys.confirmClear) as? Bool ?? true
         autoPauseEnabled = d.object(forKey: Keys.autoPause) as? Bool ?? false
+        autoPauseSpeedMph = d.object(forKey: Keys.autoPauseSpeed) as? Double ?? 1.5
+        autoPauseDelaySeconds = d.object(forKey: Keys.autoPauseDelay) as? Double ?? 4
         batteryTrackingEnabled = d.object(forKey: Keys.batteryTracking) as? Bool ?? false
         voiceSpeechRate = d.object(forKey: Keys.voiceRate) as? Double ?? 0.5
         voiceIdentifier = d.string(forKey: Keys.voiceIdentifier) ?? VoiceCatalog.systemDefaultID

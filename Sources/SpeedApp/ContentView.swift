@@ -546,23 +546,31 @@ struct HistoryView: View {
 
     private var ridesList: some View {
         List {
-            ForEach(visibleRecordings) { rec in
-                NavigationLink(destination: RecordingDetailView(recording: rec)) {
-                    rideRow(rec)
+            Section {
+                ForEach(visibleRecordings) { rec in
+                    NavigationLink(destination: RecordingDetailView(recording: rec)) {
+                        rideRow(rec)
+                    }
+                    .swipeActions(edge: .trailing) {
+                        Button(role: .destructive) {
+                            runStore.delete(id: rec.id)
+                        } label: {
+                            Label("Delete", systemImage: "trash")
+                        }
+                        Button {
+                            renameText = rec.name
+                            renameTarget = rec
+                        } label: {
+                            Label("Rename", systemImage: "pencil")
+                        }
+                        .tint(.blue)
+                    }
                 }
-                .swipeActions(edge: .trailing) {
-                    Button(role: .destructive) {
-                        runStore.delete(id: rec.id)
-                    } label: {
-                        Label("Delete", systemImage: "trash")
-                    }
-                    Button {
-                        renameText = rec.name
-                        renameTarget = rec
-                    } label: {
-                        Label("Rename", systemImage: "pencil")
-                    }
-                    .tint(.blue)
+            } footer: {
+                if !visibleRecordings.isEmpty {
+                    Text("Swipe a ride to rename or delete it.")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
                 }
             }
         }
@@ -703,9 +711,6 @@ struct RecordingDetailView: View {
     @State private var shareFile: ShareableFile?
     @State private var isExporting = false
     @State private var exportErrorMessage: String?
-    @State private var showRename = false
-    @State private var renameText = ""
-    @EnvironmentObject var runStore: RunStore
 
     private var coordinates: [CLLocationCoordinate2D] {
         recording.samples.map { CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude) }
@@ -812,12 +817,6 @@ struct RecordingDetailView: View {
                     ProgressView()
                 } else {
                     Menu {
-                        Button {
-                            renameText = recording.name
-                            showRename = true
-                        } label: {
-                            Label("Rename", systemImage: "pencil")
-                        }
                         if coordinates.count > 1 {
                             Button {
                                 exportRoute()
@@ -831,19 +830,10 @@ struct RecordingDetailView: View {
                             Label("Ride Data (CSV)", systemImage: "tablecells")
                         }
                     } label: {
-                        Image(systemName: "ellipsis.circle")
+                        Image(systemName: "square.and.arrow.up")
                     }
                 }
             }
-        }
-        .alert("Rename Ride", isPresented: $showRename) {
-            TextField("Ride name", text: $renameText)
-            Button("Cancel", role: .cancel) {}
-            Button("Save") {
-                runStore.rename(id: recording.id, to: renameText)
-            }
-        } message: {
-            Text("Give this ride a name so it's easy to find later.")
         }
         .sheet(item: $shareFile) { file in
             ActivityView(activityItems: [file.url])
@@ -1000,10 +990,32 @@ struct SettingsView: View {
 
                 Section {
                     Toggle("Auto-Pause When Stopped", isOn: $settings.autoPauseEnabled)
+
+                    if settings.autoPauseEnabled {
+                        HStack {
+                            Text("Pause below")
+                            Spacer()
+                            Text(String(format: "%.1f %@",
+                                        settings.unit.convert(fromMph: settings.autoPauseSpeedMph),
+                                        settings.unit.rawValue))
+                                .foregroundStyle(.secondary)
+                                .monospacedDigit()
+                        }
+                        Slider(value: $settings.autoPauseSpeedMph, in: 0.5...5, step: 0.5)
+
+                        HStack {
+                            Text("After")
+                            Spacer()
+                            Text("\(Int(settings.autoPauseDelaySeconds)) sec")
+                                .foregroundStyle(.secondary)
+                                .monospacedDigit()
+                        }
+                        Slider(value: $settings.autoPauseDelaySeconds, in: 2...15, step: 1)
+                    }
                 } header: {
                     Text("Recording")
                 } footer: {
-                    Text("Automatically pauses the recording after about 4 seconds below 1.5 mph, and resumes when you start moving again. Time spent stopped won't count toward your ride duration, and stops won't drag down your average speed. Turn this off if you want your ride timed door-to-door including every red light.")
+                    Text("Automatically pauses the recording once you've been below the set speed for the set time, and resumes when you start moving again. Time spent stopped won't count toward your ride duration, and stops won't drag down your average speed. Turn this off if you want your ride timed door-to-door including every red light.")
                 }
 
                 Section {

@@ -61,13 +61,17 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
     /// When true, recording automatically pauses while you're stopped and resumes when you move.
     var autoPauseEnabled: Bool = false
 
-    /// Below this speed you're considered stopped rather than moving.
-    private let autoPauseSpeedThreshold: Double = 1.5   // mph
-    /// How long you must be under the threshold before auto-pause kicks in.
-    /// Prevents pausing at every brief slowdown.
-    private let autoPauseDelay: TimeInterval = 4.0
-    /// Speed that counts as moving again after an auto-pause.
-    private let autoResumeSpeedThreshold: Double = 2.5  // mph
+    /// Below this speed you're considered stopped rather than moving. Set from Settings.
+    var autoPauseSpeedThreshold: Double = 1.5   // mph
+    /// How long you must be under the threshold before auto-pause kicks in. Set from Settings.
+    var autoPauseDelay: TimeInterval = 4.0
+
+    /// Speed that counts as moving again after an auto-pause. Deliberately a bit above the
+    /// pause threshold — without that gap it would flicker on and off while you creep
+    /// forward at a light.
+    private var autoResumeSpeedThreshold: Double {
+        autoPauseSpeedThreshold + 1.0
+    }
 
     private let manager = CLLocationManager()
     private var displayLink: CADisplayLink?
