@@ -5,7 +5,7 @@ import AVFoundation
 ///
 /// iOS voices aren't a fixed list — they depend on what the user has installed. Default
 /// voices are always present; higher-quality "Enhanced" and "Premium" voices only show up
-/// if the user has downloaded them (Settings › Accessibility › Spoken Content › Voices).
+/// if the user has downloaded them (Settings › Accessibility › Read & Speak › Voices).
 /// So this reads the live list at runtime rather than hardcoding anything.
 enum VoiceCatalog {
 

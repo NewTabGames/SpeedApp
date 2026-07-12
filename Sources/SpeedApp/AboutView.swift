@@ -143,7 +143,7 @@ struct AboutView: View {
             ),
             Feature(
                 name: "Choose the voice",
-                detail: "Pick which voice reads your directions from the voices installed on your phone, and preview it. Download more (including higher-quality ones) in iOS Settings › Accessibility › Spoken Content › Voices."
+                detail: "Pick which voice reads your directions from the voices installed on your phone, and preview it. Download more (including higher-quality ones) in iOS Settings › Accessibility › Read & Speak › Voices."
             ),
             Feature(
                 name: "Plays nicely with music",

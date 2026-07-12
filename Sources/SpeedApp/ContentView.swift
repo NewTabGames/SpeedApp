@@ -1048,7 +1048,7 @@ struct SettingsView: View {
                 } header: {
                     Text("Navigation Voice")
                 } footer: {
-                    Text("Controls the voice and speed of spoken turn-by-turn directions. More voices — including higher-quality ones — can be downloaded in iOS Settings › Accessibility › Spoken Content › Voices.")
+                    Text("Controls the voice and speed of spoken turn-by-turn directions. More voices — including higher-quality ones — can be downloaded in iOS Settings › Accessibility › Read & Speak › Voices.")
                 }
 
                 Section {
