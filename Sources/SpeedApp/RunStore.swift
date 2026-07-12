@@ -1,50 +1,54 @@
 import Foundation
 import Combine
 
-struct RunRecord: Identifiable, Codable, Equatable {
+struct SpeedRecording: Identifiable, Codable, Equatable {
     var id: UUID = UUID()
     var date: Date
-    var zeroToSixty: Double?
-    var zeroToHundred: Double?
-    var topSpeedMph: Double
+    var duration: Double
+    var maxMph: Double
+    var avgMph: Double
+    var samples: [SpeedSample]
+
+    static func == (lhs: SpeedRecording, rhs: SpeedRecording) -> Bool {
+        lhs.id == rhs.id
+    }
 }
 
 final class RunStore: ObservableObject {
-    @Published private(set) var runs: [RunRecord] = []
+    @Published private(set) var recordings: [SpeedRecording] = []
 
-    private let storageKey = "speedapp.runs.v1"
+    private let recordingsKey = "speedapp.recordings.v1"
 
     init() {
         load()
     }
 
-    func addRun(zeroToSixty: Double?, zeroToHundred: Double?, topSpeedMph: Double) {
-        // Skip saving empty/noise runs
-        guard zeroToSixty != nil || zeroToHundred != nil else { return }
-        let record = RunRecord(date: Date(), zeroToSixty: zeroToSixty, zeroToHundred: zeroToHundred, topSpeedMph: topSpeedMph)
-        runs.insert(record, at: 0)
+    func addRecording(samples: [SpeedSample], maxMph: Double, avgMph: Double, duration: Double) {
+        guard duration > 2 else { return } // skip accidental taps
+        let recording = SpeedRecording(date: Date(), duration: duration, maxMph: maxMph, avgMph: avgMph, samples: samples)
+        recordings.insert(recording, at: 0)
         save()
     }
 
-    func deleteRun(at offsets: IndexSet) {
-        runs.remove(atOffsets: offsets)
+    func deleteRecording(at offsets: IndexSet) {
+        recordings.remove(atOffsets: offsets)
         save()
     }
 
-    func clearAll() {
-        runs.removeAll()
+    func clearAllRecordings() {
+        recordings.removeAll()
         save()
     }
 
     private func save() {
-        if let data = try? JSONEncoder().encode(runs) {
-            UserDefaults.standard.set(data, forKey: storageKey)
+        if let data = try? JSONEncoder().encode(recordings) {
+            UserDefaults.standard.set(data, forKey: recordingsKey)
         }
     }
 
     private func load() {
-        guard let data = UserDefaults.standard.data(forKey: storageKey),
-              let decoded = try? JSONDecoder().decode([RunRecord].self, from: data) else { return }
-        runs = decoded
+        guard let data = UserDefaults.standard.data(forKey: recordingsKey),
+              let decoded = try? JSONDecoder().decode([SpeedRecording].self, from: data) else { return }
+        recordings = decoded
     }
 }

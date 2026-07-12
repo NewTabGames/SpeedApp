@@ -2,34 +2,55 @@ import Foundation
 import CoreLocation
 import Combine
 
+struct SpeedSample: Codable, Identifiable {
+    var id: UUID = UUID()
+    let offsetSeconds: Double
+    let mph: Double
+}
+
+extension SpeedSample: Equatable {
+    static func == (lhs: SpeedSample, rhs: SpeedSample) -> Bool {
+        lhs.id == rhs.id
+    }
+}
+
 final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
 
     // MARK: - Published state
     @Published var speedMph: Double = 0
     @Published var maxSpeedMph: Double = 0
     @Published var authorizationStatus: CLAuthorizationStatus = .notDetermined
+    @Published var signalQuality: SignalQuality = .acquiring
 
-    // Timer results, published so views update live
-    @Published var zeroToSixtySeconds: Double? = nil
-    @Published var zeroToHundredSeconds: Double? = nil
-    @Published var isTiming: Bool = false
+    // Recording session
+    @Published var isRecording: Bool = false
+    @Published var recordingElapsed: Double = 0
+    @Published var recordingSamples: [SpeedSample] = []
+    @Published var recordingMaxMph: Double = 0
+    @Published var recordingAvgMph: Double = 0
+
+    enum SignalQuality {
+        case acquiring, weak, good
+    }
+
+    /// Set by SettingsStore; controls how fast the EMA reacts to new readings.
+    var smoothingAlpha: Double = 0.6
 
     private let manager = CLLocationManager()
 
-    // Timing state machine
-    private var timingStartDate: Date?
-    private var hitSixty = false
-    private var hitHundred = false
+    // Recording state
+    private var recordingStartDate: Date?
+    private var recordingSpeedSum: Double = 0
+    private var recordingSampleCount: Int = 0
 
-    // Smoothing: raw GPS speed can jitter, so we lightly average
-    private var recentSpeeds: [Double] = []
-    private let smoothingWindow = 3
+    // Exponential moving average smoothing
+    private var emaSpeed: Double? = nil
 
     override init() {
         super.init()
         manager.delegate = self
         manager.desiredAccuracy = kCLLocationAccuracyBestForNavigation
-        manager.activityType = .automotiveNavigation
+        manager.activityType = .fitness
         manager.distanceFilter = kCLDistanceFilterNone
     }
 
@@ -49,19 +70,27 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
         maxSpeedMph = 0
     }
 
-    /// Arms the timer; it will automatically start counting once speed crosses above ~1 mph from a stop.
-    func armTimer() {
-        isTiming = true
-        hitSixty = false
-        hitHundred = false
-        zeroToSixtySeconds = nil
-        zeroToHundredSeconds = nil
-        timingStartDate = nil
+    // MARK: - Recording
+
+    func startRecording() {
+        isRecording = true
+        recordingStartDate = Date()
+        recordingElapsed = 0
+        recordingSamples = []
+        recordingMaxMph = 0
+        recordingAvgMph = 0
+        recordingSpeedSum = 0
+        recordingSampleCount = 0
     }
 
-    func cancelTimer() {
-        isTiming = false
-        timingStartDate = nil
+    @discardableResult
+    func stopRecording() -> (samples: [SpeedSample], maxMph: Double, avgMph: Double, duration: Double)? {
+        guard isRecording, let start = recordingStartDate else { return nil }
+        isRecording = false
+        let duration = Date().timeIntervalSince(start)
+        let result = (recordingSamples, recordingMaxMph, recordingAvgMph, duration)
+        recordingStartDate = nil
+        return result
     }
 
     // MARK: - CLLocationManagerDelegate
@@ -76,48 +105,47 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         guard let location = locations.last else { return }
 
-        // CLLocation.speed is meters/second, negative when invalid
+        if location.horizontalAccuracy < 0 || location.horizontalAccuracy > 65 {
+            signalQuality = .weak
+            return
+        }
+
         let rawSpeedMps = max(location.speed, 0)
         let mph = rawSpeedMps * 2.236936
 
-        recentSpeeds.append(mph)
-        if recentSpeeds.count > smoothingWindow {
-            recentSpeeds.removeFirst()
+        if location.speedAccuracy >= 0 && location.speedAccuracy > 4 {
+            signalQuality = .weak
+        } else {
+            signalQuality = .good
         }
-        let smoothed = recentSpeeds.reduce(0, +) / Double(recentSpeeds.count)
+
+        let smoothed: Double
+        if let previous = emaSpeed {
+            smoothed = smoothingAlpha * mph + (1 - smoothingAlpha) * previous
+        } else {
+            smoothed = mph
+        }
+        emaSpeed = smoothed
 
         speedMph = smoothed
         if smoothed > maxSpeedMph {
             maxSpeedMph = smoothed
         }
 
-        handleTimingLogic(currentMph: smoothed)
+        handleRecordingLogic(currentMph: smoothed)
     }
 
-    private func handleTimingLogic(currentMph: Double) {
-        guard isTiming else { return }
-
-        // Wait for a rolling start: begin the clock once we leave a near-stop
-        if timingStartDate == nil {
-            if currentMph < 1.0 {
-                // still stopped, waiting to launch
-                return
-            } else {
-                timingStartDate = Date()
-            }
-        }
-
-        guard let start = timingStartDate else { return }
+    private func handleRecordingLogic(currentMph: Double) {
+        guard isRecording, let start = recordingStartDate else { return }
         let elapsed = Date().timeIntervalSince(start)
+        recordingElapsed = elapsed
 
-        if !hitSixty && currentMph >= 60 {
-            hitSixty = true
-            zeroToSixtySeconds = elapsed
-        }
-        if !hitHundred && currentMph >= 100 {
-            hitHundred = true
-            zeroToHundredSeconds = elapsed
-            isTiming = false // run complete
+        recordingSamples.append(SpeedSample(offsetSeconds: elapsed, mph: currentMph))
+        recordingSampleCount += 1
+        recordingSpeedSum += currentMph
+        recordingAvgMph = recordingSpeedSum / Double(recordingSampleCount)
+        if currentMph > recordingMaxMph {
+            recordingMaxMph = currentMph
         }
     }
 }
