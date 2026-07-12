@@ -2,7 +2,7 @@ name: SpeedApp
 options:
   bundleIdPrefix: com.tyler.speedapp
   deploymentTarget:
-    iOS: "17.0"
+    iOS: "18.0"
 
 targets:
   SpeedApp:

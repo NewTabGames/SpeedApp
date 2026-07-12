@@ -3,18 +3,16 @@ import CoreLocation
 import Combine
 import QuartzCore
 
-struct SpeedSample: Codable, Identifiable {
-    var id: UUID = UUID()
+/// One GPS reading during a recording.
+/// `offsetSeconds` is unique within a recording, so it doubles as the identity —
+/// no need to store a UUID per sample (at 1 sample/sec that adds up fast).
+struct SpeedSample: Codable, Identifiable, Equatable {
     let offsetSeconds: Double
     let mph: Double
     let latitude: Double
     let longitude: Double
-}
 
-extension SpeedSample: Equatable {
-    static func == (lhs: SpeedSample, rhs: SpeedSample) -> Bool {
-        lhs.id == rhs.id
-    }
+    var id: Double { offsetSeconds }
 }
 
 final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
@@ -101,11 +99,18 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
 
     /// Runs every display frame (~60fps). Eases the shown number toward the real GPS
     /// speed so it counts up/down smoothly rather than jumping once per second.
+    ///
+    /// Important: this only assigns when the value actually changes. `displaySpeedMph` is
+    /// @Published, and assigning to it fires a change notification even if the new value is
+    /// identical — which would re-render every observing view 60x/sec forever while parked.
     @objc private func stepDisplaySpeed() {
         let target = speedMph
         let delta = target - displaySpeedMph
+
         if abs(delta) < 0.05 {
-            displaySpeedMph = target
+            if displaySpeedMph != target {
+                displaySpeedMph = target
+            }
             return
         }
         // ~12% of the gap per frame lands on the target in roughly a second,

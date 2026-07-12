@@ -268,17 +268,12 @@ struct HistoryView: View {
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
 
-                            Chart(rec.samples) { sample in
-                                LineMark(
-                                    x: .value("Time", sample.offsetSeconds),
-                                    y: .value("Speed", settings.unit.convert(fromMph: sample.mph))
-                                )
-                                .foregroundStyle(settings.accent.color)
-                                .interpolationMethod(.catmullRom)
-                            }
+                            SpeedSparkline(
+                                samples: rec.samples,
+                                unit: settings.unit,
+                                accent: settings.accent.color
+                            )
                             .frame(height: 60)
-                            .chartXAxis(.hidden)
-                            .chartYAxis(.hidden)
 
                             HStack(spacing: 16) {
                                 Text("Max: \(String(format: "%.0f", settings.unit.convert(fromMph: rec.maxMph))) \(settings.unit.rawValue)")

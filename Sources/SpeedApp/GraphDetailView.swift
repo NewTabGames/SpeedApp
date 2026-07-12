@@ -113,7 +113,7 @@ private struct ExportableGraphImage: View {
                 Spacer()
             }
 
-            Chart(recording.samples) { sample in
+            Chart(downsampled(recording.samples, maxPoints: 250)) { sample in
                 LineMark(
                     x: .value("Time", sample.offsetSeconds),
                     y: .value("Speed", settings.unit.convert(fromMph: sample.mph))

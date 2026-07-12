@@ -19,8 +19,53 @@ struct ActivityView: UIViewControllerRepresentable {
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
-/// A speed-over-time chart with drag-to-inspect: touch and drag across it to see
-/// the exact speed and elapsed time at that point, shown as a crosshair + label.
+/// Thins a sample array down to a bounded number of evenly-spaced points for drawing.
+///
+/// At one GPS fix per second, an hour-long ride produces ~3,600 samples. Rendering all of
+/// them is wasted work — the drawn line looks identical — and it gets genuinely slow once
+/// several recordings are on screen at once (like the History list). The last sample is
+/// always kept so a live recording still tracks the present moment.
+///
+/// This is display-only. The full-resolution data is never modified.
+func downsampled(_ samples: [SpeedSample], maxPoints: Int) -> [SpeedSample] {
+    guard samples.count > maxPoints, maxPoints > 0 else { return samples }
+
+    let stride = Double(samples.count) / Double(maxPoints)
+    var thinned: [SpeedSample] = []
+    thinned.reserveCapacity(maxPoints + 1)
+
+    for i in 0..<maxPoints {
+        let index = Int(Double(i) * stride)
+        if index < samples.count {
+            thinned.append(samples[index])
+        }
+    }
+    if let last = samples.last, thinned.last?.offsetSeconds != last.offsetSeconds {
+        thinned.append(last)
+    }
+    return thinned
+}
+
+/// A compact, non-interactive speed line for list rows. Heavily downsampled since it's
+/// only a few points tall and many of them render at once.
+struct SpeedSparkline: View {
+    let samples: [SpeedSample]
+    let unit: SpeedUnit
+    let accent: Color
+
+    var body: some View {
+        Chart(downsampled(samples, maxPoints: 60)) { sample in
+            LineMark(
+                x: .value("Time", sample.offsetSeconds),
+                y: .value("Speed", unit.convert(fromMph: sample.mph))
+            )
+            .foregroundStyle(accent)
+            .interpolationMethod(.catmullRom)
+        }
+        .chartXAxis(.hidden)
+        .chartYAxis(.hidden)
+    }
+}
 struct InteractiveSpeedChart: View {
     let samples: [SpeedSample]
     let unit: SpeedUnit
@@ -30,6 +75,12 @@ struct InteractiveSpeedChart: View {
     var lineStyle: ChartLineStyle = .smooth
 
     @State private var selectedTime: Double?
+
+    /// Drawn at reduced resolution for performance. Drag-to-inspect still reads from the
+    /// full-resolution `samples` array, so inspection stays exact.
+    private var displaySamples: [SpeedSample] {
+        downsampled(samples, maxPoints: 250)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -49,7 +100,7 @@ struct InteractiveSpeedChart: View {
                     .foregroundStyle(.secondary)
             }
 
-            Chart(samples) { sample in
+            Chart(displaySamples) { sample in
                 LineMark(
                     x: .value("Time", sample.offsetSeconds),
                     y: .value("Speed", unit.convert(fromMph: sample.mph))
