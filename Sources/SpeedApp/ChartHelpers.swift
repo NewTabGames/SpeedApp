@@ -89,6 +89,10 @@ struct InteractiveSpeedChart: View {
                 }
             }
             .chartYAxisLabel(showAxes ? unit.rawValue.lowercased() : "")
+            // GPS only delivers a fix about once per second, so without this the line
+            // would visibly jump each time a point lands. Animating the data change
+            // makes the chart glide between fixes instead.
+            .animation(.easeInOut(duration: 0.9), value: samples.count)
         }
     }
 

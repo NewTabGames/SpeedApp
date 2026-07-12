@@ -1,5 +1,6 @@
 import SwiftUI
 import MapKit
+import UIKit
 
 struct MapTabView: View {
     @EnvironmentObject var location: LocationManager
@@ -7,29 +8,49 @@ struct MapTabView: View {
     @EnvironmentObject var settings: SettingsStore
 
     @State private var cameraPosition: MapCameraPosition = .userLocation(followsHeading: false, fallback: .automatic)
+    @State private var selectedMapItem: MapSelection<MKMapItem>?
     @FocusState private var searchFocused: Bool
 
     var body: some View {
         ZStack(alignment: .top) {
-            Map(position: $cameraPosition) {
-                UserAnnotation()
+            MapReader { proxy in
+                Map(position: $cameraPosition, selection: $selectedMapItem) {
+                    UserAnnotation()
 
-                if let destination = navigation.destinationCoordinate {
-                    Marker(navigation.destinationName.isEmpty ? "Destination" : navigation.destinationName, coordinate: destination)
-                        .tint(.red)
-                }
+                    if let destination = navigation.destinationCoordinate {
+                        Marker(navigation.destinationName.isEmpty ? "Destination" : navigation.destinationName, coordinate: destination)
+                            .tint(.red)
+                    }
 
-                if let route = navigation.route {
-                    MapPolyline(route.polyline)
-                        .stroke(settings.accent.color, lineWidth: 5)
+                    if let route = navigation.route {
+                        MapPolyline(route.polyline)
+                            .stroke(settings.accent.color, lineWidth: 5)
+                    }
                 }
+                .mapStyle(settings.mapStyle.mapStyle)
+                .mapControls {
+                    MapUserLocationButton()
+                    MapCompass()
+                }
+                // Long-press anywhere on the map to drop a pin there as your destination.
+                .gesture(
+                    LongPressGesture(minimumDuration: 0.4)
+                        .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .local))
+                        .onEnded { value in
+                            guard case .second(true, let drag?) = value else { return }
+                            if let coordinate = proxy.convert(drag.location, from: .local) {
+                                if settings.hapticsEnabled {
+                                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                }
+                                navigation.setDestination(
+                                    coordinate: coordinate,
+                                    currentCoordinate: location.currentLocation?.coordinate
+                                )
+                            }
+                        }
+                )
+                .ignoresSafeArea(edges: .bottom)
             }
-            .mapStyle(settings.mapStyle.mapStyle)
-            .mapControls {
-                MapUserLocationButton()
-                MapCompass()
-            }
-            .ignoresSafeArea(edges: .bottom)
 
             VStack(spacing: 12) {
                 if navigation.isNavigating {
@@ -40,12 +61,30 @@ struct MapTabView: View {
                         suggestionsList
                     } else if navigation.route != nil {
                         routePreviewCard
+                    } else {
+                        Text("Tap a place on the map, or press and hold to drop a pin")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(.ultraThinMaterial)
+                            .clipShape(Capsule())
                     }
                 }
                 Spacer()
             }
             .padding(.top, 8)
             .padding(.horizontal)
+        }
+        // Tapping a point of interest on the map (restaurant, shop, park, etc.) sets it as the destination.
+        .onChange(of: selectedMapItem) { _, selection in
+            guard let mapItem = selection?.value else { return }
+            navigation.setDestination(
+                coordinate: mapItem.placemark.coordinate,
+                name: mapItem.name,
+                currentCoordinate: location.currentLocation?.coordinate
+            )
+            selectedMapItem = nil
         }
         .onAppear {
             location.requestPermission()

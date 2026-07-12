@@ -118,6 +118,35 @@ final class NavigationStore: NSObject, ObservableObject, MKLocalSearchCompleterD
         arrived = false
     }
 
+    /// Sets a destination straight from a coordinate the rider tapped or long-pressed on the map,
+    /// instead of requiring them to type a search. Looks up a human-readable name for it.
+    func setDestination(coordinate: CLLocationCoordinate2D,
+                        name: String? = nil,
+                        currentCoordinate: CLLocationCoordinate2D?) {
+        destinationCoordinate = coordinate
+        clearSearch()
+
+        if let name, !name.isEmpty {
+            destinationName = name
+        } else {
+            destinationName = "Dropped Pin"
+            // Try to resolve a nicer label in the background; keep the pin either way.
+            let location = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+            CLGeocoder().reverseGeocodeLocation(location) { [weak self] placemarks, _ in
+                guard let self, let placemark = placemarks?.first else { return }
+                let label = placemark.name
+                    ?? [placemark.thoroughfare, placemark.locality].compactMap { $0 }.joined(separator: ", ")
+                if !label.isEmpty {
+                    self.destinationName = label
+                }
+            }
+        }
+
+        if let currentCoordinate {
+            calculateRoute(from: currentCoordinate, to: coordinate)
+        }
+    }
+
     // MARK: - Turn-by-turn
 
     func startNavigation() {

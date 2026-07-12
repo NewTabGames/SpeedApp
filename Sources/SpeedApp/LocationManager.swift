@@ -1,6 +1,7 @@
 import Foundation
 import CoreLocation
 import Combine
+import QuartzCore
 
 struct SpeedSample: Codable, Identifiable {
     var id: UUID = UUID()
@@ -40,6 +41,12 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
     /// Set by SettingsStore; controls how fast the EMA reacts to new readings.
     var smoothingAlpha: Double = 0.6
 
+    /// The speed shown in the UI. GPS only reports about once per second, so instead of
+    /// snapping straight to each new reading, this eases toward it every display frame.
+    /// The underlying `speedMph` stays the true value used for recording and alerts.
+    @Published var displaySpeedMph: Double = 0
+    private var displayLink: CADisplayLink?
+
     private let manager = CLLocationManager()
 
     // Recording state
@@ -64,12 +71,46 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
         manager.requestWhenInUseAuthorization()
     }
 
+    deinit {
+        displayLink?.invalidate()
+    }
+
     func start() {
         manager.startUpdatingLocation()
+        startDisplayLink()
     }
 
     func stop() {
         manager.stopUpdatingLocation()
+        stopDisplayLink()
+    }
+
+    // MARK: - Smooth display interpolation
+
+    private func startDisplayLink() {
+        guard displayLink == nil else { return }
+        let link = CADisplayLink(target: self, selector: #selector(stepDisplaySpeed))
+        link.add(to: .main, forMode: .common)
+        displayLink = link
+    }
+
+    private func stopDisplayLink() {
+        displayLink?.invalidate()
+        displayLink = nil
+    }
+
+    /// Runs every display frame (~60fps). Eases the shown number toward the real GPS
+    /// speed so it counts up/down smoothly rather than jumping once per second.
+    @objc private func stepDisplaySpeed() {
+        let target = speedMph
+        let delta = target - displaySpeedMph
+        if abs(delta) < 0.05 {
+            displaySpeedMph = target
+            return
+        }
+        // ~12% of the gap per frame lands on the target in roughly a second,
+        // which matches the GPS update interval without lagging behind it.
+        displaySpeedMph += delta * 0.12
     }
 
     func resetMaxSpeed() {

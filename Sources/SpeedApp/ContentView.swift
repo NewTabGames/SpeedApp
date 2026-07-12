@@ -83,7 +83,7 @@ struct SpeedView: View {
                         .font(.system(size: 130, weight: .heavy, design: .rounded))
                         .monospacedDigit()
                         .contentTransition(.numericText())
-                        .animation(.snappy(duration: 0.15), value: location.speedMph)
+                        .animation(.snappy(duration: 0.1), value: location.displaySpeedMph)
                     Text(settings.unit.rawValue)
                         .font(.title3.weight(.bold))
                         .foregroundStyle(settings.accent.color)
@@ -129,7 +129,7 @@ struct SpeedView: View {
     }
 
     private var displaySpeed: Double {
-        settings.unit.convert(fromMph: location.speedMph)
+        settings.unit.convert(fromMph: location.displaySpeedMph)
     }
     private var displayMax: Double {
         settings.unit.convert(fromMph: location.maxSpeedMph)
@@ -181,7 +181,7 @@ struct RecordView: View {
                     .padding(.horizontal)
 
                     HStack(spacing: 0) {
-                        statBlock(title: "CURRENT", value: unitString(location.speedMph))
+                        statBlock(title: "CURRENT", value: unitString(location.displaySpeedMph))
                         statBlock(title: "MAX", value: unitString(location.recordingMaxMph))
                         statBlock(title: "AVG", value: unitString(location.recordingAvgMph))
                         statBlock(title: "DISTANCE", value: distanceString(location.recordingDistanceMiles))
@@ -256,6 +256,7 @@ struct RecordView: View {
 struct HistoryView: View {
     @EnvironmentObject var runStore: RunStore
     @EnvironmentObject var settings: SettingsStore
+    @State private var showClearConfirmation = false
 
     var body: some View {
         NavigationView {
@@ -296,7 +297,7 @@ struct HistoryView: View {
             .toolbar {
                 ToolbarItemGroup(placement: .navigationBarTrailing) {
                     if !runStore.recordings.isEmpty {
-                        Button("Clear", role: .destructive) { runStore.clearAllRecordings() }
+                        Button("Clear", role: .destructive) { requestClear() }
                     }
                 }
             }
@@ -309,6 +310,22 @@ struct HistoryView: View {
                     )
                 }
             }
+        }
+        .tint(settings.accent.color)
+        .alert("Clear History?", isPresented: $showClearConfirmation) {
+            Button("Cancel", role: .cancel) {}
+            Button("Clear All", role: .destructive) { runStore.clearAllRecordings() }
+        } message: {
+            Text("Are you sure you want to clear your history? This will permanently delete all \(runStore.recordings.count) saved recordings and can't be undone.")
+        }
+    }
+
+    /// Respects the "Confirm Before Clearing" setting — skips the prompt if the user turned it off.
+    private func requestClear() {
+        if settings.confirmBeforeClearing {
+            showClearConfirmation = true
+        } else {
+            runStore.clearAllRecordings()
         }
     }
 
@@ -439,6 +456,7 @@ struct SettingsView: View {
     @EnvironmentObject var location: LocationManager
 
     @State private var alertSpeedText: String = ""
+    @State private var showClearConfirmation = false
     @FocusState private var alertFieldFocused: Bool
 
     var body: some View {
@@ -511,8 +529,11 @@ struct SettingsView: View {
                 Section {
                     Toggle("Keep Screen Awake While Recording", isOn: $settings.keepScreenAwake)
                     Toggle("Haptic Feedback", isOn: $settings.hapticsEnabled)
+                    Toggle("Confirm Before Clearing", isOn: $settings.confirmBeforeClearing)
                 } header: {
                     Text("Behavior")
+                } footer: {
+                    Text("When on, you'll be asked to confirm before deleting all your recordings.")
                 }
 
                 Section {
@@ -562,7 +583,7 @@ struct SettingsView: View {
                         location.resetMaxSpeed()
                     }
                     Button("Clear All Recordings", role: .destructive) {
-                        runStore.clearAllRecordings()
+                        requestClear()
                     }
                 } header: {
                     Text("Data")
@@ -592,6 +613,22 @@ struct SettingsView: View {
             }
             .onAppear { syncAlertText() }
             .onChange(of: settings.unit) { _, _ in syncAlertText() }
+        }
+        .tint(settings.accent.color)
+        .alert("Clear History?", isPresented: $showClearConfirmation) {
+            Button("Cancel", role: .cancel) {}
+            Button("Clear All", role: .destructive) { runStore.clearAllRecordings() }
+        } message: {
+            Text("Are you sure you want to clear your history? This will permanently delete all \(runStore.recordings.count) saved recordings and can't be undone.")
+        }
+    }
+
+    /// Respects the "Confirm Before Clearing" setting — skips the prompt if the user turned it off.
+    private func requestClear() {
+        if settings.confirmBeforeClearing {
+            showClearConfirmation = true
+        } else {
+            runStore.clearAllRecordings()
         }
     }
 

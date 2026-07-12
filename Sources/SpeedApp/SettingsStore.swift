@@ -145,6 +145,9 @@ final class SettingsStore: ObservableObject {
     @Published var hapticsEnabled: Bool {
         didSet { UserDefaults.standard.set(hapticsEnabled, forKey: Keys.haptics) }
     }
+    @Published var confirmBeforeClearing: Bool {
+        didSet { UserDefaults.standard.set(confirmBeforeClearing, forKey: Keys.confirmClear) }
+    }
     /// 0.3 (slow/clear) to 0.6 (fast/natural). AVSpeechUtterance default is ~0.5.
     @Published var voiceSpeechRate: Double {
         didSet { UserDefaults.standard.set(voiceSpeechRate, forKey: Keys.voiceRate) }
@@ -162,6 +165,7 @@ final class SettingsStore: ObservableObject {
         static let gpsAccuracy = "settings.gpsAccuracy"
         static let chartLineStyle = "settings.chartLineStyle"
         static let haptics = "settings.haptics"
+        static let confirmClear = "settings.confirmClear"
         static let voiceRate = "settings.voiceRate"
     }
 
@@ -178,6 +182,7 @@ final class SettingsStore: ObservableObject {
         gpsAccuracy = GPSAccuracyMode(rawValue: d.string(forKey: Keys.gpsAccuracy) ?? "") ?? .highAccuracy
         chartLineStyle = ChartLineStyle(rawValue: d.string(forKey: Keys.chartLineStyle) ?? "") ?? .smooth
         hapticsEnabled = d.object(forKey: Keys.haptics) as? Bool ?? true
+        confirmBeforeClearing = d.object(forKey: Keys.confirmClear) as? Bool ?? true
         voiceSpeechRate = d.object(forKey: Keys.voiceRate) as? Double ?? 0.5
     }
 }
