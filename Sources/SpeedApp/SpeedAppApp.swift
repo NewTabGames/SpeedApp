@@ -1,5 +1,6 @@
 import SwiftUI
 import AVFoundation
+import UIKit
 
 @main
 struct SpeedAppApp: App {
@@ -19,6 +20,18 @@ struct SpeedAppApp: App {
         // to say "turn right".
     }
 
+    /// The screen should stay awake if we're recording (and the user wants it to) or if
+    /// we're actively navigating. Centralized here so recording and navigation don't each
+    /// write isIdleTimerDisabled independently and fight — ending one mode used to let the
+    /// screen sleep even while the other was still going.
+    private var shouldKeepScreenAwake: Bool {
+        (locationManager.isRecording && settings.keepScreenAwake) || navigation.isNavigating
+    }
+
+    private func syncScreenAwake() {
+        UIApplication.shared.isIdleTimerDisabled = shouldKeepScreenAwake
+    }
+
     var body: some Scene {
         WindowGroup {
             ContentView()
@@ -36,6 +49,7 @@ struct SpeedAppApp: App {
                     locationManager.autoPauseDelay = settings.autoPauseDelaySeconds
                     navigation.speechRate = Float(settings.voiceSpeechRate)
                     navigation.voiceIdentifier = settings.voiceIdentifier
+                    syncScreenAwake()
                 }
                 .onChange(of: settings.smoothing) { _, newValue in
                     locationManager.smoothingAlpha = newValue.alpha
@@ -58,6 +72,9 @@ struct SpeedAppApp: App {
                 .onChange(of: settings.voiceIdentifier) { _, newValue in
                     navigation.voiceIdentifier = newValue
                 }
+                .onChange(of: locationManager.isRecording) { _, _ in syncScreenAwake() }
+                .onChange(of: settings.keepScreenAwake) { _, _ in syncScreenAwake() }
+                .onChange(of: navigation.isNavigating) { _, _ in syncScreenAwake() }
                 .onReceive(locationManager.$currentLocation) { loc in
                     if let loc {
                         navigation.updateProgress(currentLocation: loc)

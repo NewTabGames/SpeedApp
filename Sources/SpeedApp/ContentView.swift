@@ -53,7 +53,8 @@ private func backgroundGradient() -> some View {
 struct SpeedView: View {
     @EnvironmentObject var location: LocationManager
     @EnvironmentObject var settings: SettingsStore
-    @State private var didAlert = false
+    @State private var speedAlertArmed = true
+    @State private var showSpeedAlert = false
 
     var body: some View {
         ZStack {
@@ -103,7 +104,7 @@ struct SpeedView: View {
 
                 Button("Reset Max Speed") {
                     location.resetMaxSpeed()
-                    didAlert = false
+                    speedAlertArmed = true
                 }
                 .font(.subheadline.weight(.medium))
                 .foregroundStyle(.secondary)
@@ -114,17 +115,25 @@ struct SpeedView: View {
             location.requestPermission()
             location.start()
         }
-        .alert("Speed Alert", isPresented: $didAlert) {
+        .alert("Speed Alert", isPresented: $showSpeedAlert) {
             Button("OK", role: .cancel) {}
         } message: {
-            Text("You've exceeded your set speed limit of \(String(format: "%.0f", settings.maxSpeedAlertMph)) mph.")
+            Text("You've exceeded your set speed limit of \(String(format: "%.0f", settings.unit.convert(fromMph: settings.maxSpeedAlertMph))) \(settings.unit.rawValue).")
         }
         .onChange(of: location.speedMph) { _, newValue in
-            if settings.maxSpeedAlertEnabled && newValue >= settings.maxSpeedAlertMph && !didAlert {
-                didAlert = true
-                if settings.hapticsEnabled {
-                    UINotificationFeedbackGenerator().notificationOccurred(.warning)
+            guard settings.maxSpeedAlertEnabled else { return }
+            if newValue >= settings.maxSpeedAlertMph {
+                // Fire once per crossing; stays quiet while you remain over the limit.
+                if speedAlertArmed {
+                    speedAlertArmed = false
+                    showSpeedAlert = true
+                    if settings.hapticsEnabled {
+                        UINotificationFeedbackGenerator().notificationOccurred(.warning)
+                    }
                 }
+            } else {
+                // Back under the limit — re-arm so the next crossing alerts again.
+                speedAlertArmed = true
             }
         }
     }
@@ -193,9 +202,6 @@ struct RecordView: View {
                     controls
                 }
             }
-        }
-        .onChange(of: location.isRecording) { _, isRecording in
-            UIApplication.shared.isIdleTimerDisabled = isRecording && settings.keepScreenAwake
         }
         .sheet(isPresented: $showEndBatteryPrompt) {
             endBatterySheet

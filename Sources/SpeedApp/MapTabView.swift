@@ -9,7 +9,24 @@ struct MapTabView: View {
 
     @State private var cameraPosition: MapCameraPosition = .userLocation(followsHeading: false, fallback: .automatic)
     @State private var selectedMapItem: MapSelection<MKMapItem>?
+    /// When true, the camera stays pinned to the rider's location as they move ("lock on").
+    @State private var followMode = false
+    /// Best-effort current zoom span, so recentering doesn't also change the zoom level.
+    @State private var currentSpan: MKCoordinateSpan?
     @FocusState private var searchFocused: Bool
+
+    private func recenterOnUser(zoom: Bool = false) {
+        guard let coord = location.currentLocation?.coordinate else {
+            cameraPosition = .userLocation(followsHeading: false, fallback: .automatic)
+            return
+        }
+        let span = zoom
+            ? MKCoordinateSpan(latitudeDelta: 0.008, longitudeDelta: 0.008)
+            : (currentSpan ?? MKCoordinateSpan(latitudeDelta: 0.02, longitudeDelta: 0.02))
+        withAnimation(.easeInOut(duration: 0.35)) {
+            cameraPosition = .region(MKCoordinateRegion(center: coord, span: span))
+        }
+    }
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -29,8 +46,15 @@ struct MapTabView: View {
                 }
                 .mapStyle(settings.mapStyle.mapStyle)
                 .mapControls {
-                    MapUserLocationButton()
                     MapCompass()
+                }
+                // Push MapKit's own controls (like the compass) down so they don't sit
+                // underneath the search bar / navigation banner at the top of the screen.
+                // The banner during active navigation is taller than the search bar, so
+                // this is sized for the taller of the two.
+                .safeAreaPadding(.top, navigation.isNavigating ? 120 : 70)
+                .onMapCameraChange { context in
+                    currentSpan = context.region.span
                 }
                 // Long-press anywhere on the map to drop a pin there as your destination.
                 .gesture(
@@ -75,6 +99,50 @@ struct MapTabView: View {
             }
             .padding(.top, 8)
             .padding(.horizontal)
+
+            // Floating map controls, bottom-right.
+            VStack {
+                Spacer()
+                HStack {
+                    Spacer()
+                    VStack(spacing: 12) {
+                        // Lock-on: keep the camera pinned to me as I move.
+                        Button {
+                            followMode.toggle()
+                            if settings.hapticsEnabled {
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            }
+                            if followMode { recenterOnUser(zoom: true) }
+                        } label: {
+                            Image(systemName: followMode ? "location.fill.viewfinder" : "location.viewfinder")
+                                .font(.title2)
+                                .foregroundStyle(followMode ? .white : settings.accent.color)
+                                .frame(width: 48, height: 48)
+                                .background(followMode ? AnyShapeStyle(settings.accent.color) : AnyShapeStyle(.ultraThinMaterial))
+                                .clipShape(Circle())
+                                .shadow(radius: 3)
+                        }
+
+                        // One-shot recenter: snap back to me, without locking.
+                        Button {
+                            recenterOnUser()
+                            if settings.hapticsEnabled {
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            }
+                        } label: {
+                            Image(systemName: "location")
+                                .font(.title2)
+                                .foregroundStyle(settings.accent.color)
+                                .frame(width: 48, height: 48)
+                                .background(.ultraThinMaterial)
+                                .clipShape(Circle())
+                                .shadow(radius: 3)
+                        }
+                    }
+                    .padding(.trailing, 16)
+                    .padding(.bottom, 28)
+                }
+            }
         }
         // Tapping a point of interest on the map (restaurant, shop, park, etc.) sets it as the destination.
         .onChange(of: selectedMapItem) { _, selection in
@@ -90,12 +158,13 @@ struct MapTabView: View {
             location.requestPermission()
             location.start()
         }
-        .onChange(of: navigation.isNavigating) { _, isNav in
-            UIApplication.shared.isIdleTimerDisabled = isNav
-        }
         .onReceive(location.$currentLocation) { loc in
             if let loc {
                 navigation.updateSearchRegion(around: loc.coordinate)
+                // Lock-on: track the rider as they move.
+                if followMode {
+                    recenterOnUser(zoom: false)
+                }
             }
         }
         .alert("You've Arrived", isPresented: $navigation.arrived) {

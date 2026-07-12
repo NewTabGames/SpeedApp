@@ -134,6 +134,10 @@ struct AboutView: View {
                 detail: "Search for a place, tap one on the map, or press and hold anywhere to drop a pin."
             ),
             Feature(
+                name: "Recenter and lock-on",
+                detail: "A button snaps the map back to your location, and a lock button keeps the map pinned to you as you move. Panning the map yourself is always available."
+            ),
+            Feature(
                 name: "Turn-by-turn navigation",
                 detail: "Real road routing with distance and ETA, and spoken directions as you ride. You get a heads-up before each turn and a final call at the turn itself. Mute or change the voice speed any time."
             ),

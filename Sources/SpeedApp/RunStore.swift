@@ -67,6 +67,10 @@ final class RunStore: ObservableObject {
 
     private let legacyKey = "speedapp.recordings.v1"
 
+    /// A dedicated serial queue for writes. Saves stay off the main thread, but run one at a
+    /// time in order — so a slower earlier write can't finish after (and clobber) a later one.
+    private let saveQueue = DispatchQueue(label: "RunStore.saveQueue", qos: .utility)
+
     init() {
         load()
     }
@@ -204,7 +208,7 @@ final class RunStore: ObservableObject {
     private func save() {
         let snapshot = recordings
         // Writing can be slow with lots of samples, so keep it off the main thread.
-        DispatchQueue.global(qos: .utility).async { [fileURL] in
+        saveQueue.async { [fileURL] in
             guard let data = try? JSONEncoder().encode(snapshot) else { return }
             try? data.write(to: fileURL, options: .atomic)
         }

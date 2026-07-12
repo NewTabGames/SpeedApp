@@ -25,6 +25,7 @@ A GPS speedometer, ride recorder, and turn-by-turn navigator for electric scoote
 
 ### Map
 - Search a destination, tap a place on the map, or long-press to drop a pin
+- Recenter button to snap back to your location, and a lock button to keep the map following you
 - Real road routing with distance and ETA
 - Spoken turn-by-turn directions — a heads-up before each turn, then a final call at the turn
 - Automatic rerouting if you leave the route
@@ -145,6 +146,11 @@ open SpeedApp.xcodeproj
 ## Changelog
 
 **2.1**
+- Map: recenter button and a lock-on (follow) button
+- Fixed speed alert repeating while over the limit, and it now shows your chosen unit
+- Centralized screen-awake handling so recording and navigation don't conflict
+- Serialized ride saves to prevent an older write clobbering a newer one
+- Long rides (1 hr+) now show h:mm:ss in graph detail and exported images
 - Route maps can be colored by speed (pale = slow, deep = fast), toggle in Settings. Exported route images use the same speed shading.
 - Accent colors expanded from 7 to 12
 - Auto-pause speed threshold and delay are now adjustable in Settings

@@ -197,9 +197,7 @@ enum MapExporter {
             unit.convert(fromMph: recording.avgMph),
             unit.rawValue
         )
-        let mins = Int(recording.duration) / 60
-        let secs = Int(recording.duration) % 60
-        let duration = String(format: "%d:%02d", mins, secs)
+        let duration = elapsedLabel(recording.duration)
 
         let dateText = recording.date.formatted(date: .abbreviated, time: .shortened)
         let statsText = "\(distance)   •   \(duration)   •   Max \(maxSpeed)   •   Avg \(avgSpeed)"

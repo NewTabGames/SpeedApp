@@ -88,9 +88,7 @@ struct GraphDetailView: View {
     }
 
     private func durationString(_ seconds: Double) -> String {
-        let mins = Int(seconds) / 60
-        let secs = Int(seconds) % 60
-        return String(format: "%d:%02d", mins, secs)
+        elapsedLabel(seconds)
     }
 }
 
