@@ -14,7 +14,7 @@ targets:
       path: Sources/SpeedApp/Info.plist
       properties:
         UILaunchScreen: {}
-        CFBundleDisplayName: "MPH Tracker"
+        CFBundleDisplayName: "Epstein's GPS"
         NSLocationWhenInUseUsageDescription: "SpeedApp uses your location to measure your current speed in MPH."
         NSLocationAlwaysAndWhenInUseUsageDescription: "SpeedApp uses your location to measure your current speed in MPH."
         UIRequiredDeviceCapabilities:
