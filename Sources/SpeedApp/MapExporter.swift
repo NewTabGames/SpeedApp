@@ -19,7 +19,8 @@ enum MapExporter {
     static func exportRouteImage(
         recording: SpeedRecording,
         unit: SpeedUnit,
-        accent: UIColor,
+        accentTheme: AccentTheme,
+        colorBySpeed: Bool,
         mapType: MKMapType,
         size: CGSize = CGSize(width: 1000, height: 1000),
         completion: @escaping (Result<URL, Error>) -> Void
@@ -49,7 +50,8 @@ enum MapExporter {
                 coordinates: coordinates,
                 recording: recording,
                 unit: unit,
-                accent: accent
+                accentTheme: accentTheme,
+                colorBySpeed: colorBySpeed
             )
 
             guard let data = image.pngData() else {
@@ -75,7 +77,8 @@ enum MapExporter {
         coordinates: [CLLocationCoordinate2D],
         recording: SpeedRecording,
         unit: SpeedUnit,
-        accent: UIColor
+        accentTheme: AccentTheme,
+        colorBySpeed: Bool
     ) -> UIImage {
         let renderer = UIGraphicsImageRenderer(size: snapshot.image.size)
 
@@ -83,25 +86,53 @@ enum MapExporter {
             snapshot.image.draw(at: .zero)
             let cg = context.cgContext
 
-            // Route line. Drawn as a dark casing underneath the accent stroke so it stays
-            // readable over both light streets and dark satellite imagery.
             let points = coordinates.map { snapshot.point(for: $0) }
 
-            let path = UIBezierPath()
-            path.move(to: points[0])
+            // Dark casing under the whole route, so the line stays readable over both
+            // light streets and dark satellite imagery — drawn once regardless of coloring.
+            let casing = UIBezierPath()
+            casing.move(to: points[0])
             for point in points.dropFirst() {
-                path.addLine(to: point)
+                casing.addLine(to: point)
             }
-            path.lineWidth = 12
-            path.lineJoinStyle = .round
-            path.lineCapStyle = .round
-
+            casing.lineWidth = 12
+            casing.lineJoinStyle = .round
+            casing.lineCapStyle = .round
             cg.setStrokeColor(UIColor.black.withAlphaComponent(0.35).cgColor)
-            path.stroke()
+            casing.stroke()
 
-            path.lineWidth = 7
-            cg.setStrokeColor(accent.cgColor)
-            path.stroke()
+            if colorBySpeed && recording.samples.count > 1 {
+                // Same shading as the on-screen map: each segment colored by the average
+                // speed of its two endpoints, normalized to this ride's own speed range.
+                let speeds = recording.samples.map(\.mph)
+                let lo = speeds.min() ?? 0
+                var hi = speeds.max() ?? 1
+                if hi - lo < 0.1 { hi = lo + 0.1 }
+
+                cg.setLineCap(.round)
+                cg.setLineJoin(.round)
+                cg.setLineWidth(7)
+
+                for i in 0..<(points.count - 1) {
+                    let avgSpeed = (recording.samples[i].mph + recording.samples[i + 1].mph) / 2
+                    let t = (avgSpeed - lo) / (hi - lo)
+                    cg.setStrokeColor(accentTheme.speedShadeUIColor(t).cgColor)
+                    cg.move(to: points[i])
+                    cg.addLine(to: points[i + 1])
+                    cg.strokePath()
+                }
+            } else {
+                let path = UIBezierPath()
+                path.move(to: points[0])
+                for point in points.dropFirst() {
+                    path.addLine(to: point)
+                }
+                path.lineWidth = 7
+                path.lineJoinStyle = .round
+                path.lineCapStyle = .round
+                cg.setStrokeColor(accentTheme.uiColor.cgColor)
+                path.stroke()
+            }
 
             // Start / end markers
             if let start = points.first {

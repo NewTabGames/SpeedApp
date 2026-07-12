@@ -61,7 +61,7 @@ Both respect your unit setting (mph/mi or km/h/km), and column headers say which
 ### Settings
 - Units: MPH or KM/H
 - Theme: System / Light / Dark
-- Accent color (7 options)
+- Accent color (12 options)
 - Map style: Standard / Satellite / Hybrid
 - Graph line style: smooth or straight
 - Speed smoothing: Responsive / Balanced / Smooth
@@ -87,6 +87,7 @@ Both respect your unit setting (mph/mi or km/h/km), and column headers say which
 | `ChartHelpers.swift` | Interactive chart, sparkline, downsampling, share sheet |
 | `GraphDetailView.swift` | Full-screen graph with PNG export |
 | `MapExporter.swift` | Renders a ride's route map to a shareable PNG |
+| `RouteMap.swift` | Route map view with optional speed-based coloring and a legend |
 | `VoiceCatalog.swift` | Lists the navigation voices installed on the device |
 | `SpeechText.swift` | Expands street abbreviations so directions read aloud properly |
 | `TripReplayView.swift` | Animated playback of a saved ride |
@@ -144,6 +145,8 @@ open SpeedApp.xcodeproj
 ## Changelog
 
 **2.1**
+- Route maps can be colored by speed (pale = slow, deep = fast), toggle in Settings. Exported route images use the same speed shading.
+- Accent colors expanded from 7 to 12
 - Auto-pause speed threshold and delay are now adjustable in Settings
 - Fixed the voice spelling out street abbreviations ("Bull Run D-R" instead of "Bull Run Drive")
 - Trip replay now has a real-time (1x) speed and interpolates for smooth motion

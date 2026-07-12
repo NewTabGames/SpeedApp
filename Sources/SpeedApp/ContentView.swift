@@ -716,39 +716,28 @@ struct RecordingDetailView: View {
         recording.samples.map { CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude) }
     }
 
-    private var cameraPosition: MapCameraPosition {
-        guard !coordinates.isEmpty else { return .automatic }
-        let lats = coordinates.map(\.latitude)
-        let lons = coordinates.map(\.longitude)
-        let center = CLLocationCoordinate2D(
-            latitude: (lats.min()! + lats.max()!) / 2,
-            longitude: (lons.min()! + lons.max()!) / 2
-        )
-        let span = MKCoordinateSpan(
-            latitudeDelta: max((lats.max()! - lats.min()!) * 1.5, 0.005),
-            longitudeDelta: max((lons.max()! - lons.min()!) * 1.5, 0.005)
-        )
-        return .region(MKCoordinateRegion(center: center, span: span))
-    }
-
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 if coordinates.count > 1 {
-                    Map(initialPosition: cameraPosition) {
-                        MapPolyline(coordinates: coordinates)
-                            .stroke(settings.accent.color, lineWidth: 4)
-                        if let first = coordinates.first {
-                            Marker("Start", coordinate: first).tint(.green)
-                        }
-                        if let last = coordinates.last {
-                            Marker("End", coordinate: last).tint(.red)
-                        }
-                    }
+                    RouteMap(
+                        recording: recording,
+                        accent: settings.accent,
+                        colorBySpeed: settings.colorRouteBySpeed,
+                        mapStyle: settings.mapStyle.mapStyle
+                    )
                     .frame(height: 260)
-                    .mapStyle(settings.mapStyle.mapStyle)
                     .clipShape(RoundedRectangle(cornerRadius: 16))
                     .padding(.horizontal)
+
+                    if settings.colorRouteBySpeed {
+                        SpeedLegend(
+                            accent: settings.accent,
+                            minLabel: String(format: "%.0f", settings.unit.convert(fromMph: recording.samples.map(\.mph).min() ?? 0)),
+                            maxLabel: String(format: "%.0f %@", settings.unit.convert(fromMph: recording.samples.map(\.mph).max() ?? 0), settings.unit.rawValue)
+                        )
+                        .padding(.horizontal)
+                    }
 
                     NavigationLink(destination: TripReplayView(recording: recording)) {
                         Label("Replay Ride", systemImage: "play.circle.fill")
@@ -858,7 +847,8 @@ struct RecordingDetailView: View {
         MapExporter.exportRouteImage(
             recording: recording,
             unit: settings.unit,
-            accent: settings.accent.uiColor,
+            accentTheme: settings.accent,
+            colorBySpeed: settings.colorRouteBySpeed,
             mapType: settings.mapStyle.mkMapType
         ) { result in
             isExporting = false
@@ -954,12 +944,17 @@ struct SettingsView: View {
                     }
                 }
 
-                Section("Map") {
+                Section {
                     Picker("Map Style", selection: $settings.mapStyle) {
                         ForEach(MapStyleOption.allCases) { style in
                             Text(style.rawValue).tag(style)
                         }
                     }
+                    Toggle("Color Route by Speed", isOn: $settings.colorRouteBySpeed)
+                } header: {
+                    Text("Map")
+                } footer: {
+                    Text("When on, saved routes are shaded from pale (slow) to deep (fast) in your accent color. When off, the route is a single solid color.")
                 }
 
                 Section("Graphs") {

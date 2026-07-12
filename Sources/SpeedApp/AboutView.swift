@@ -154,7 +154,7 @@ struct AboutView: View {
         FeatureSection(title: "History", icon: "clock.arrow.circlepath", items: [
             Feature(
                 name: "Saved rides",
-                detail: "Every recording, with a route map showing exactly where you went."
+                detail: "Every recording, with a route map showing exactly where you went — shaded from pale to deep to show where you were slow and fast (toggle in Settings)."
             ),
             Feature(
                 name: "Rename, sort, and search",
@@ -200,11 +200,15 @@ struct AboutView: View {
             ),
             Feature(
                 name: "Appearance",
-                detail: "Light, dark, or match your system. Seven accent colors."
+                detail: "Light, dark, or match your system. Twelve accent colors."
             ),
             Feature(
                 name: "Map style",
                 detail: "Standard, satellite, or hybrid."
+            ),
+            Feature(
+                name: "Speed-colored routes",
+                detail: "Saved routes can shade from pale (slow) to deep (fast) in your accent color, so you can see at a glance where you were flying and where you crawled. Exported route images match. Toggle it under Map in Settings."
             ),
             Feature(
                 name: "Graph style",

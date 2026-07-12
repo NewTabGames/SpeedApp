@@ -39,31 +39,85 @@ enum AccentTheme: String, CaseIterable, Codable, Identifiable {
     case purple = "Purple"
     case teal = "Teal"
     case pink = "Pink"
+    case indigo = "Indigo"
+    case mint = "Mint"
+    case yellow = "Gold"
+    case crimson = "Crimson"
+    case sky = "Sky"
     var id: String { rawValue }
 
-    var color: Color {
+    /// Base RGB for each theme. Explicit values (rather than the system colors) so the
+    /// light-to-dark route gradient below has a consistent hue to shade.
+    private var rgb: (r: Double, g: Double, b: Double) {
         switch self {
-        case .orange: return .orange
-        case .green: return .green
-        case .blue: return .blue
-        case .red: return .red
-        case .purple: return .purple
-        case .teal: return .teal
-        case .pink: return .pink
+        case .orange:  return (1.00, 0.58, 0.00)
+        case .green:   return (0.30, 0.85, 0.39)
+        case .blue:    return (0.00, 0.48, 1.00)
+        case .red:     return (1.00, 0.23, 0.19)
+        case .purple:  return (0.75, 0.35, 0.95)
+        case .teal:    return (0.19, 0.78, 0.78)
+        case .pink:    return (1.00, 0.18, 0.55)
+        case .indigo:  return (0.35, 0.34, 0.84)
+        case .mint:    return (0.24, 0.87, 0.67)
+        case .yellow:  return (1.00, 0.80, 0.00)
+        case .crimson: return (0.86, 0.08, 0.24)
+        case .sky:     return (0.35, 0.78, 0.98)
         }
     }
 
-    /// Core Graphics drawing (like the route image export) needs a UIColor, not a SwiftUI Color.
+    var color: Color {
+        Color(red: rgb.r, green: rgb.g, blue: rgb.b)
+    }
+
+    /// Core Graphics drawing (like the route image export) needs a UIColor.
     var uiColor: UIColor {
-        switch self {
-        case .orange: return .systemOrange
-        case .green: return .systemGreen
-        case .blue: return .systemBlue
-        case .red: return .systemRed
-        case .purple: return .systemPurple
-        case .teal: return .systemTeal
-        case .pink: return .systemPink
-        }
+        UIColor(red: rgb.r, green: rgb.g, blue: rgb.b, alpha: 1)
+    }
+
+    /// A shade of this accent for the speed-colored route: `t` from 0 (slowest, pale) to
+    /// 1 (fastest, deep). Interpolates from a light tint of the hue toward a darkened
+    /// version of it, so the whole route stays recognisably "your color" while still
+    /// showing where you were fast or slow.
+    func speedShade(_ t: Double) -> Color {
+        let clamped = max(0, min(1, t))
+        let (r, g, b) = rgb
+
+        // Pale end: mix heavily toward white. Deep end: scale the hue darker.
+        let lightMix = 0.75   // how white the slow end is
+        let darkScale = 0.55  // how dark the fast end is
+
+        let startR = r + (1 - r) * lightMix
+        let startG = g + (1 - g) * lightMix
+        let startB = b + (1 - b) * lightMix
+
+        let endR = r * darkScale
+        let endG = g * darkScale
+        let endB = b * darkScale
+
+        return Color(
+            red: startR + (endR - startR) * clamped,
+            green: startG + (endG - startG) * clamped,
+            blue: startB + (endB - startB) * clamped
+        )
+    }
+
+    func speedShadeUIColor(_ t: Double) -> UIColor {
+        let clamped = max(0, min(1, t))
+        let (r, g, b) = rgb
+        let lightMix = 0.75
+        let darkScale = 0.55
+        let startR = r + (1 - r) * lightMix
+        let startG = g + (1 - g) * lightMix
+        let startB = b + (1 - b) * lightMix
+        let endR = r * darkScale
+        let endG = g * darkScale
+        let endB = b * darkScale
+        return UIColor(
+            red: startR + (endR - startR) * clamped,
+            green: startG + (endG - startG) * clamped,
+            blue: startB + (endB - startB) * clamped,
+            alpha: 1
+        )
     }
 }
 
@@ -165,6 +219,11 @@ final class SettingsStore: ObservableObject {
     @Published var chartLineStyle: ChartLineStyle {
         didSet { UserDefaults.standard.set(chartLineStyle.rawValue, forKey: Keys.chartLineStyle) }
     }
+    /// When true, route maps color the line by speed (pale = slow, deep = fast) instead of
+    /// drawing it in a single flat accent color.
+    @Published var colorRouteBySpeed: Bool {
+        didSet { UserDefaults.standard.set(colorRouteBySpeed, forKey: Keys.colorRoute) }
+    }
     @Published var hapticsEnabled: Bool {
         didSet { UserDefaults.standard.set(hapticsEnabled, forKey: Keys.haptics) }
     }
@@ -206,6 +265,7 @@ final class SettingsStore: ObservableObject {
         static let mapStyle = "settings.mapStyle"
         static let gpsAccuracy = "settings.gpsAccuracy"
         static let chartLineStyle = "settings.chartLineStyle"
+        static let colorRoute = "settings.colorRoute"
         static let haptics = "settings.haptics"
         static let confirmClear = "settings.confirmClear"
         static let autoPause = "settings.autoPause"
@@ -228,6 +288,7 @@ final class SettingsStore: ObservableObject {
         mapStyle = MapStyleOption(rawValue: d.string(forKey: Keys.mapStyle) ?? "") ?? .standard
         gpsAccuracy = GPSAccuracyMode(rawValue: d.string(forKey: Keys.gpsAccuracy) ?? "") ?? .highAccuracy
         chartLineStyle = ChartLineStyle(rawValue: d.string(forKey: Keys.chartLineStyle) ?? "") ?? .smooth
+        colorRouteBySpeed = d.object(forKey: Keys.colorRoute) as? Bool ?? true
         hapticsEnabled = d.object(forKey: Keys.haptics) as? Bool ?? true
         confirmBeforeClearing = d.object(forKey: Keys.confirmClear) as? Bool ?? true
         autoPauseEnabled = d.object(forKey: Keys.autoPause) as? Bool ?? false
