@@ -84,8 +84,15 @@ Both respect your unit setting (mph/mi or km/h/km), and column headers say which
 | `MapExporter.swift` | Renders a ride's route map to a shareable PNG |
 | `TripReplayView.swift` | Animated playback of a saved ride |
 | `CSVExporter.swift` | Ride summary and raw sample CSV export |
+| `AboutView.swift` | In-app "What This App Does" feature list |
 
 Recordings are stored as JSON in the app's Documents directory. All data stays on your device.
+
+## Keeping docs in sync
+
+There are two places that describe what the app does: this README, and `AboutView.swift`
+(the "What This App Does" screen in Settings). **When a feature changes, update both.**
+A stale in-app feature list is worse than none.
 
 ## Building the IPA (no Mac required)
 
@@ -129,6 +136,7 @@ open SpeedApp.xcodeproj
 ## Changelog
 
 **2.1**
+- "What This App Does" screen in Settings
 - CSV export (rides summary and per-ride raw data)
 - History split into Rides and Lifetime Totals
 - Rename, sort, and search rides

@@ -898,11 +898,20 @@ struct SettingsView: View {
 
     @State private var alertSpeedText: String = ""
     @State private var showClearConfirmation = false
+    @State private var showAbout = false
     @FocusState private var alertFieldFocused: Bool
 
     var body: some View {
         NavigationStack {
             Form {
+                Section {
+                    Button {
+                        showAbout = true
+                    } label: {
+                        Label("What This App Does", systemImage: "questionmark.circle")
+                    }
+                }
+
                 Section("Units") {
                     Picker("Speed Unit", selection: $settings.unit) {
                         ForEach(SpeedUnit.allCases) { unit in
@@ -1070,6 +1079,9 @@ struct SettingsView: View {
             .onChange(of: settings.unit) { _, _ in syncAlertText() }
         }
         .tint(settings.accent.color)
+        .sheet(isPresented: $showAbout) {
+            AboutView()
+        }
         .alert("Clear History?", isPresented: $showClearConfirmation) {
             Button("Cancel", role: .cancel) {}
             Button("Clear All", role: .destructive) { runStore.clearAllRecordings() }
