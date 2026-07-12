@@ -28,6 +28,19 @@ struct MapTabView: View {
         }
     }
 
+    /// Turns lock-on follow mode on or off. When on, the camera is handed to MapKit's own
+    /// user-tracking mode, which keeps it pinned to the rider as they move — no manual
+    /// recentering needed. When off, the camera freezes wherever it is so they can pan around.
+    private func setFollowMode(_ on: Bool) {
+        followMode = on
+        if on {
+            withAnimation(.easeInOut(duration: 0.35)) {
+                cameraPosition = .userLocation(followsHeading: false, fallback: .automatic)
+            }
+        }
+        // When turning off, we simply stop driving the camera; it stays where MapKit left it.
+    }
+
     var body: some View {
         ZStack(alignment: .top) {
             MapReader { proxy in
@@ -106,13 +119,13 @@ struct MapTabView: View {
                 HStack {
                     Spacer()
                     VStack(spacing: 12) {
-                        // Lock-on: keep the camera pinned to me as I move.
+                        // Lock-on: hand the camera to MapKit's user-tracking so it follows
+                        // me as I move. Toggle.
                         Button {
-                            followMode.toggle()
+                            setFollowMode(!followMode)
                             if settings.hapticsEnabled {
                                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
                             }
-                            if followMode { recenterOnUser(zoom: true) }
                         } label: {
                             Image(systemName: followMode ? "location.fill.viewfinder" : "location.viewfinder")
                                 .font(.title2)
@@ -123,8 +136,10 @@ struct MapTabView: View {
                                 .shadow(radius: 3)
                         }
 
-                        // One-shot recenter: snap back to me, without locking.
+                        // One-shot recenter: snap back to me. Also cancels lock-on, since
+                        // this is a "just look here once" action.
                         Button {
+                            if followMode { followMode = false }
                             recenterOnUser()
                             if settings.hapticsEnabled {
                                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -161,10 +176,6 @@ struct MapTabView: View {
         .onReceive(location.$currentLocation) { loc in
             if let loc {
                 navigation.updateSearchRegion(around: loc.coordinate)
-                // Lock-on: track the rider as they move.
-                if followMode {
-                    recenterOnUser(zoom: false)
-                }
             }
         }
         .alert("You've Arrived", isPresented: $navigation.arrived) {
