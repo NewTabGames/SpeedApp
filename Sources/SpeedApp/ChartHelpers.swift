@@ -84,7 +84,7 @@ struct InteractiveSpeedChart: View {
                 if showAxes {
                     AxisMarks { _ in
                         AxisGridLine()
-                        AxisValueLabel(format: .number.precision(.fractionLength(0)))
+                        AxisValueLabel(format: FloatingPointFormatStyle<Double>().precision(.fractionLength(0)))
                     }
                 }
             }
