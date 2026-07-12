@@ -33,6 +33,7 @@ struct SpeedAppApp: App {
                     locationManager.applyAccuracyMode(settings.gpsAccuracy)
                     locationManager.autoPauseEnabled = settings.autoPauseEnabled
                     navigation.speechRate = Float(settings.voiceSpeechRate)
+                    navigation.voiceIdentifier = settings.voiceIdentifier
                 }
                 .onChange(of: settings.smoothing) { _, newValue in
                     locationManager.smoothingAlpha = newValue.alpha
@@ -45,6 +46,9 @@ struct SpeedAppApp: App {
                 }
                 .onChange(of: settings.voiceSpeechRate) { _, newValue in
                     navigation.speechRate = Float(newValue)
+                }
+                .onChange(of: settings.voiceIdentifier) { _, newValue in
+                    navigation.voiceIdentifier = newValue
                 }
                 .onReceive(locationManager.$currentLocation) { loc in
                     if let loc {

@@ -8,30 +8,57 @@ struct TripReplayView: View {
     let recording: SpeedRecording
     @EnvironmentObject var settings: SettingsStore
 
-    @State private var currentIndex: Int = 0
+    /// Continuous playback position in ride-seconds. The marker interpolates between GPS
+    /// samples using this, so playback is smooth instead of hopping sample-to-sample —
+    /// and at 1× it tracks real wall-clock time.
+    @State private var playbackTime: Double = 0
     @State private var isPlaying = false
     @State private var speedMultiplier: Double = 1
     @State private var cameraPosition: MapCameraPosition = .automatic
 
-    /// Replay advances on a wall-clock timer rather than stepping one sample per tick,
-    /// so playback speed stays consistent regardless of how dense the GPS data is.
-    private let tick = Timer.publish(every: 0.1, on: .main, in: .common).autoconnect()
+    private let tick = Timer.publish(every: 0.05, on: .main, in: .common).autoconnect()
 
     private var samples: [SpeedSample] { recording.samples }
+
+    private var totalDuration: Double {
+        samples.last?.offsetSeconds ?? 0
+    }
 
     private var coordinates: [CLLocationCoordinate2D] {
         samples.map { CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude) }
     }
 
+    /// The sample at or just before the current playback time.
     private var currentSample: SpeedSample? {
-        guard samples.indices.contains(currentIndex) else { return samples.last }
-        return samples[currentIndex]
+        guard !samples.isEmpty else { return nil }
+        let idx = samples.lastIndex { $0.offsetSeconds <= playbackTime } ?? 0
+        return samples[idx]
+    }
+
+    /// Marker position, interpolated between the surrounding two samples for smoothness.
+    private var interpolatedCoordinate: CLLocationCoordinate2D? {
+        guard !samples.isEmpty else { return nil }
+        guard let afterIdx = samples.firstIndex(where: { $0.offsetSeconds >= playbackTime }) else {
+            return coordinates.last
+        }
+        guard afterIdx > 0 else { return coordinates.first }
+
+        let before = samples[afterIdx - 1]
+        let after = samples[afterIdx]
+        let span = after.offsetSeconds - before.offsetSeconds
+        let t = span > 0 ? (playbackTime - before.offsetSeconds) / span : 0
+
+        return CLLocationCoordinate2D(
+            latitude: before.latitude + (after.latitude - before.latitude) * t,
+            longitude: before.longitude + (after.longitude - before.longitude) * t
+        )
     }
 
     /// The portion of the route already travelled, drawn brighter than the rest.
     private var travelledCoordinates: [CLLocationCoordinate2D] {
-        guard currentIndex > 0 else { return [] }
-        return Array(coordinates.prefix(currentIndex + 1))
+        let count = (samples.lastIndex { $0.offsetSeconds <= playbackTime } ?? 0) + 1
+        guard count > 1 else { return [] }
+        return Array(coordinates.prefix(count))
     }
 
     var body: some View {
@@ -66,9 +93,9 @@ struct TripReplayView: View {
                     .tint(.green)
             }
 
-            // The moving dot.
-            if let sample = currentSample {
-                Annotation("", coordinate: CLLocationCoordinate2D(latitude: sample.latitude, longitude: sample.longitude)) {
+            // The moving dot, at the interpolated position for smooth motion.
+            if let coordinate = interpolatedCoordinate {
+                Annotation("", coordinate: coordinate) {
                     ZStack {
                         Circle()
                             .fill(.white)
@@ -94,7 +121,7 @@ struct TripReplayView: View {
                     .font(.title3.weight(.bold))
                     .monospacedDigit()
                     .foregroundStyle(settings.accent.color)
-                Text(elapsedLabel(currentSample?.offsetSeconds ?? 0))
+                Text(elapsedLabel(playbackTime))
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
@@ -110,11 +137,9 @@ struct TripReplayView: View {
                 .foregroundStyle(settings.accent.color)
                 .interpolationMethod(settings.chartLineStyle == .smooth ? .catmullRom : .linear)
 
-                if let current = currentSample {
-                    RuleMark(x: .value("Now", current.offsetSeconds))
-                        .foregroundStyle(Color.secondary.opacity(0.6))
-                        .lineStyle(StrokeStyle(lineWidth: 1.5))
-                }
+                RuleMark(x: .value("Now", playbackTime))
+                    .foregroundStyle(Color.secondary.opacity(0.6))
+                    .lineStyle(StrokeStyle(lineWidth: 1.5))
             }
             .frame(height: 100)
             .chartYAxis {
@@ -144,18 +169,18 @@ struct TripReplayView: View {
         VStack(spacing: 12) {
             Slider(
                 value: Binding(
-                    get: { Double(currentIndex) },
+                    get: { playbackTime },
                     set: { newValue in
-                        currentIndex = Int(newValue)
+                        playbackTime = newValue
                         recenter()
                     }
                 ),
-                in: 0...Double(max(samples.count - 1, 1))
+                in: 0...max(totalDuration, 1)
             )
 
             HStack(spacing: 24) {
                 Button {
-                    currentIndex = 0
+                    playbackTime = 0
                     recenter()
                 } label: {
                     Image(systemName: "backward.end.fill")
@@ -171,17 +196,17 @@ struct TripReplayView: View {
                 }
 
                 Menu {
-                    ForEach([1.0, 2.0, 4.0, 8.0], id: \.self) { rate in
+                    ForEach([0.5, 1.0, 2.0, 4.0, 8.0], id: \.self) { rate in
                         Button {
                             speedMultiplier = rate
                         } label: {
-                            Text("\(Int(rate))×")
+                            Text(rateLabel(rate))
                         }
                     }
                 } label: {
-                    Text("\(Int(speedMultiplier))×")
+                    Text(rateLabel(speedMultiplier))
                         .font(.headline)
-                        .frame(width: 44)
+                        .frame(width: 70)
                 }
             }
         }
@@ -190,12 +215,19 @@ struct TripReplayView: View {
         .padding(.top, 8)
     }
 
+    /// 1× is labeled "Real-time" since that's what the rider asked to be able to watch.
+    private func rateLabel(_ rate: Double) -> String {
+        if rate == 1.0 { return "Real-time" }
+        if rate == 0.5 { return "0.5×" }
+        return "\(Int(rate))×"
+    }
+
     // MARK: - Playback
 
     private func togglePlayback() {
-        // Restarting from the end should replay from the beginning rather than doing nothing.
-        if !isPlaying && currentIndex >= samples.count - 1 {
-            currentIndex = 0
+        // Restarting from the end should replay from the beginning.
+        if !isPlaying && playbackTime >= totalDuration {
+            playbackTime = 0
         }
         isPlaying.toggle()
     }
@@ -203,17 +235,14 @@ struct TripReplayView: View {
     private func advanceIfPlaying() {
         guard isPlaying, !samples.isEmpty else { return }
 
-        let currentOffset = currentSample?.offsetSeconds ?? 0
-        // 0.1s tick × multiplier = how much ride-time to advance this frame.
-        let targetOffset = currentOffset + (0.1 * speedMultiplier)
+        // 0.05s tick × multiplier = ride-seconds to advance this frame.
+        // At 1× (Real-time), one real second of watching = one second of the ride.
+        playbackTime += 0.05 * speedMultiplier
 
-        guard let nextIndex = samples.firstIndex(where: { $0.offsetSeconds >= targetOffset }) else {
-            currentIndex = samples.count - 1
+        if playbackTime >= totalDuration {
+            playbackTime = totalDuration
             isPlaying = false
-            return
         }
-
-        currentIndex = nextIndex
         recenter()
     }
 
@@ -237,9 +266,9 @@ struct TripReplayView: View {
     /// Follows the marker while playing, but leaves the camera alone when paused so the
     /// rider can pan and zoom around the route freely.
     private func recenter() {
-        guard isPlaying, let sample = currentSample else { return }
+        guard isPlaying, let coordinate = interpolatedCoordinate else { return }
         cameraPosition = .region(MKCoordinateRegion(
-            center: CLLocationCoordinate2D(latitude: sample.latitude, longitude: sample.longitude),
+            center: coordinate,
             span: MKCoordinateSpan(latitudeDelta: 0.004, longitudeDelta: 0.004)
         ))
     }

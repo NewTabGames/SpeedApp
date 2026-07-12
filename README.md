@@ -28,6 +28,7 @@ A GPS speedometer, ride recorder, and turn-by-turn navigator for electric scoote
 - Real road routing with distance and ETA
 - Spoken turn-by-turn directions — a heads-up before each turn, then a final call at the turn
 - Automatic rerouting if you leave the route
+- Choose the navigation voice from those installed on your phone, with a preview button
 - Adjustable voice speed and a mute toggle
 - Music (Spotify, podcasts) only dips while a direction is being spoken, then returns to full volume
 
@@ -36,8 +37,8 @@ Split into two sections:
 
 **Rides**
 - Every saved ride with a route map showing where you went
-- Rename any ride; sort by date, distance, top speed, or duration; search by name
-- Trip replay — watch a marker retrace your route with the speed graph scrubbing in sync
+- Rename a ride (from its detail screen or by swiping in the list); sort by date, distance, top speed, or duration; search by name
+- Trip replay — watch a marker retrace your route with the speed graph scrubbing in sync, in real-time or sped up
 - Full-screen interactive speed graph — dragging shows speed, elapsed time, and time of day
 - Export the route map as a PNG, with your path, start/end markers, and ride stats
 - Export the speed graph as a PNG
@@ -86,6 +87,7 @@ Both respect your unit setting (mph/mi or km/h/km), and column headers say which
 | `ChartHelpers.swift` | Interactive chart, sparkline, downsampling, share sheet |
 | `GraphDetailView.swift` | Full-screen graph with PNG export |
 | `MapExporter.swift` | Renders a ride's route map to a shareable PNG |
+| `VoiceCatalog.swift` | Lists the navigation voices installed on the device |
 | `TripReplayView.swift` | Animated playback of a saved ride |
 | `CSVExporter.swift` | Ride summary and raw sample CSV export |
 | `AboutView.swift` | In-app "What This App Does" feature list |
@@ -134,12 +136,18 @@ open SpeedApp.xcodeproj
 - Graphs are downsampled for display on long rides. Drag-to-inspect still reads full-resolution data.
 - Exporting a route map downloads map tiles, so it needs a network connection and takes a second or two.
 - GPS altitude is noisier than horizontal position. Elevation numbers only count changes above ~1.5 m and should be treated as approximate.
+- The route line is drawn from raw GPS (accurate to ~15-30 ft). On a path near a parallel road, the line can appear to follow the road — that's GPS position error, not map-snapping. Low-confidence fixes (>30 m error) are discarded to reduce this.
 - Battery range estimates need at least 3 logged rides and get better with more. They assume your riding is roughly consistent — a hilly ride will drain faster than the estimate suggests.
 - Pausing stops collecting data entirely. If you move while paused, the route map draws a straight line across the gap, and that distance isn't counted.
 
 ## Changelog
 
 **2.1**
+- Trip replay now has a real-time (1x) speed and interpolates for smooth motion
+- Rename is now available from the ride detail screen, not just swipe
+- Choose the navigation voice, with a preview button
+- Tightened GPS filtering to reduce the route drifting onto nearby roads
+- Fixed navigation voice clipping the first words of a direction
 - Recording continues while the phone is locked (background location)
 - Fixed music staying quiet the whole time the app was open — it now only dips while speaking a direction
 - Automatic rerouting when you leave the route

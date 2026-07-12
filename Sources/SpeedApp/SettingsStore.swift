@@ -181,6 +181,11 @@ final class SettingsStore: ObservableObject {
     @Published var voiceSpeechRate: Double {
         didSet { UserDefaults.standard.set(voiceSpeechRate, forKey: Keys.voiceRate) }
     }
+    /// Chosen navigation voice, stored as an AVSpeechSynthesisVoice identifier.
+    /// Defaults to VoiceCatalog.systemDefaultID (let iOS pick for the language).
+    @Published var voiceIdentifier: String {
+        didSet { UserDefaults.standard.set(voiceIdentifier, forKey: Keys.voiceIdentifier) }
+    }
 
     private enum Keys {
         static let unit = "settings.unit"
@@ -198,6 +203,7 @@ final class SettingsStore: ObservableObject {
         static let autoPause = "settings.autoPause"
         static let batteryTracking = "settings.batteryTracking"
         static let voiceRate = "settings.voiceRate"
+        static let voiceIdentifier = "settings.voiceIdentifier"
     }
 
     init() {
@@ -217,5 +223,6 @@ final class SettingsStore: ObservableObject {
         autoPauseEnabled = d.object(forKey: Keys.autoPause) as? Bool ?? false
         batteryTrackingEnabled = d.object(forKey: Keys.batteryTracking) as? Bool ?? false
         voiceSpeechRate = d.object(forKey: Keys.voiceRate) as? Double ?? 0.5
+        voiceIdentifier = d.string(forKey: Keys.voiceIdentifier) ?? VoiceCatalog.systemDefaultID
     }
 }

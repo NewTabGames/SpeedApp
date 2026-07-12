@@ -2,6 +2,7 @@ import SwiftUI
 import Charts
 import UIKit
 import MapKit
+import AVFoundation
 
 struct ContentView: View {
     @EnvironmentObject var settings: SettingsStore
@@ -702,6 +703,9 @@ struct RecordingDetailView: View {
     @State private var shareFile: ShareableFile?
     @State private var isExporting = false
     @State private var exportErrorMessage: String?
+    @State private var showRename = false
+    @State private var renameText = ""
+    @EnvironmentObject var runStore: RunStore
 
     private var coordinates: [CLLocationCoordinate2D] {
         recording.samples.map { CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude) }
@@ -808,6 +812,12 @@ struct RecordingDetailView: View {
                     ProgressView()
                 } else {
                     Menu {
+                        Button {
+                            renameText = recording.name
+                            showRename = true
+                        } label: {
+                            Label("Rename", systemImage: "pencil")
+                        }
                         if coordinates.count > 1 {
                             Button {
                                 exportRoute()
@@ -821,10 +831,19 @@ struct RecordingDetailView: View {
                             Label("Ride Data (CSV)", systemImage: "tablecells")
                         }
                     } label: {
-                        Image(systemName: "square.and.arrow.up")
+                        Image(systemName: "ellipsis.circle")
                     }
                 }
             }
+        }
+        .alert("Rename Ride", isPresented: $showRename) {
+            TextField("Ride name", text: $renameText)
+            Button("Cancel", role: .cancel) {}
+            Button("Save") {
+                runStore.rename(id: recording.id, to: renameText)
+            }
+        } message: {
+            Text("Give this ride a name so it's easy to find later.")
         }
         .sheet(item: $shareFile) { file in
             ActivityView(activityItems: [file.url])
@@ -900,6 +919,11 @@ struct SettingsView: View {
     @State private var showClearConfirmation = false
     @State private var showAbout = false
     @FocusState private var alertFieldFocused: Bool
+
+    /// Installed voices, loaded once when the view appears.
+    @State private var availableVoices: [VoiceCatalog.Voice] = []
+    /// A dedicated synthesizer for the Settings preview button, separate from navigation.
+    private let previewSynth = AVSpeechSynthesizer()
 
     var body: some View {
         NavigationStack {
@@ -1001,6 +1025,19 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    Picker("Voice", selection: $settings.voiceIdentifier) {
+                        Text("System Default").tag(VoiceCatalog.systemDefaultID)
+                        ForEach(availableVoices) { voice in
+                            Text(voice.label).tag(voice.id)
+                        }
+                    }
+
+                    Button {
+                        previewVoice()
+                    } label: {
+                        Label("Preview Voice", systemImage: "play.circle")
+                    }
+
                     HStack {
                         Text("Voice Speed")
                         Spacer()
@@ -1011,7 +1048,7 @@ struct SettingsView: View {
                 } header: {
                     Text("Navigation Voice")
                 } footer: {
-                    Text("Controls how fast spoken turn-by-turn directions are read out.")
+                    Text("Controls the voice and speed of spoken turn-by-turn directions. More voices — including higher-quality ones — can be downloaded in iOS Settings › Accessibility › Spoken Content › Voices.")
                 }
 
                 Section {
@@ -1075,7 +1112,10 @@ struct SettingsView: View {
                     Button("Done") { alertFieldFocused = false }
                 }
             }
-            .onAppear { syncAlertText() }
+            .onAppear {
+                syncAlertText()
+                availableVoices = VoiceCatalog.availableVoices()
+            }
             .onChange(of: settings.unit) { _, _ in syncAlertText() }
         }
         .tint(settings.accent.color)
@@ -1096,6 +1136,14 @@ struct SettingsView: View {
         } else {
             runStore.clearAllRecordings()
         }
+    }
+
+    private func previewVoice() {
+        previewSynth.stopSpeaking(at: .immediate)
+        let utterance = AVSpeechUtterance(string: "In 500 feet, turn right onto Main Street.")
+        utterance.voice = VoiceCatalog.voice(for: settings.voiceIdentifier)
+        utterance.rate = Float(settings.voiceSpeechRate)
+        previewSynth.speak(utterance)
     }
 
     private var voiceRateLabel: String {

@@ -40,6 +40,8 @@ final class NavigationStore: NSObject, ObservableObject, MKLocalSearchCompleterD
 
     /// Set externally from SettingsStore; 0.3 (slow/clear) to 0.6 (fast/natural).
     var speechRate: Float = 0.5
+    /// Chosen voice identifier; resolved to an actual voice at speak time.
+    var voiceIdentifier: String = VoiceCatalog.systemDefaultID
 
     private let completer = MKLocalSearchCompleter()
     private let synthesizer = AVSpeechSynthesizer()
@@ -400,11 +402,18 @@ final class NavigationStore: NSObject, ObservableObject, MKLocalSearchCompleterD
     private func speak(_ text: String) {
         guard voiceEnabled, !text.isEmpty else { return }
 
+        let alreadyActive = audioSessionActive
         activateAudioSession()
 
         let utterance = AVSpeechUtterance(string: text)
-        utterance.voice = AVSpeechSynthesisVoice(language: "en-US")
+        utterance.voice = VoiceCatalog.voice(for: voiceIdentifier)
         utterance.rate = speechRate
+        // If we just activated the session from cold, it needs a beat to actually engage the
+        // audio route (especially when ducking Spotify). Speaking instantly clips the first
+        // word or two. A short lead-in delay only when starting cold avoids that without
+        // adding lag to back-to-back announcements.
+        utterance.preUtteranceDelay = alreadyActive ? 0 : 0.25
+
         synthesizer.speak(utterance)
     }
 
@@ -415,12 +424,18 @@ final class NavigationStore: NSObject, ObservableObject, MKLocalSearchCompleterD
     // session being active, so the session is claimed right before an utterance and handed
     // straight back afterwards. Any other app's audio returns to full volume immediately.
 
+    /// Whether we currently hold the audio session. Avoids re-activating (and re-delaying)
+    /// for back-to-back announcements.
+    private var audioSessionActive = false
+
     /// Claims the audio session so the next utterance is heard over music.
     private func activateAudioSession() {
+        guard !audioSessionActive else { return }
         let session = AVAudioSession.sharedInstance()
         do {
             try session.setCategory(.playback, mode: .voicePrompt, options: [.duckOthers])
             try session.setActive(true)
+            audioSessionActive = true
         } catch {
             // If the session can't be claimed, the direction just won't be ducked over
             // music. Not worth interrupting navigation over.
@@ -431,8 +446,9 @@ final class NavigationStore: NSObject, ObservableObject, MKLocalSearchCompleterD
     /// to ramp back up to full volume — without it, music can stay quiet.
     private func releaseAudioSession() {
         // Multiple utterances can be queued back to back. Don't release mid-sequence,
-        // or the volume would bounce up and down between them.
+        // or the volume would bounce up and down and words could get clipped.
         guard !synthesizer.isSpeaking else { return }
+        audioSessionActive = false
 
         DispatchQueue.global(qos: .userInitiated).async {
             try? AVAudioSession.sharedInstance().setActive(
@@ -445,11 +461,21 @@ final class NavigationStore: NSObject, ObservableObject, MKLocalSearchCompleterD
     // MARK: - AVSpeechSynthesizerDelegate
 
     func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
-        releaseAudioSession()
+        scheduleSessionRelease()
     }
 
     func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
-        releaseAudioSession()
+        scheduleSessionRelease()
+    }
+
+    /// Waits a beat before releasing. Turn announcements often come in pairs (early warning,
+    /// then the turn itself); releasing instantly between them would clip audio and make the
+    /// music volume bounce. If nothing else started speaking in that window, let it go.
+    private func scheduleSessionRelease() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
+            guard let self, !self.synthesizer.isSpeaking else { return }
+            self.releaseAudioSession()
+        }
     }
 }
 

@@ -142,6 +142,10 @@ struct AboutView: View {
                 detail: "If you leave the route, it recalculates a new one from where you actually are, just like Apple Maps."
             ),
             Feature(
+                name: "Choose the voice",
+                detail: "Pick which voice reads your directions from the voices installed on your phone, and preview it. Download more (including higher-quality ones) in iOS Settings › Accessibility › Spoken Content › Voices."
+            ),
+            Feature(
                 name: "Plays nicely with music",
                 detail: "Spotify or whatever you're listening to only dips for the second it takes to speak a direction, then goes straight back to full volume."
             )
@@ -154,11 +158,11 @@ struct AboutView: View {
             ),
             Feature(
                 name: "Rename, sort, and search",
-                detail: "Name your rides, sort by date, distance, top speed, or duration, and search by name."
+                detail: "Name a ride from its detail screen or by swiping it in the list. Sort by date, distance, top speed, or duration, and search by name."
             ),
             Feature(
                 name: "Trip replay",
-                detail: "Watch a marker retrace your route while the speed graph scrubs along with it. Play, scrub, or speed it up."
+                detail: "Watch a marker retrace your route while the speed graph scrubs along with it. Play it back in real-time, slow it to half speed, or speed it up to 8x."
             ),
             Feature(
                 name: "Interactive graph",
@@ -224,6 +228,7 @@ struct AboutView: View {
     static let limitations: [String] = [
         "Speed comes from GPS, which updates about once a second. The number on screen is smoothed to look fluid, but that's the real data rate underneath.",
         "Elevation is the noisiest thing GPS measures. Treat those numbers as approximate.",
+        "Your route is drawn from raw GPS, which is only accurate to about 15-30 feet. On a path running close to a road, the line may appear to sit on the road even though you weren't on it — that's the phone's position estimate, not the app moving you.",
         "Navigation uses Apple's driving routes — there's no scooter-specific routing available, so it may occasionally send you down a road that isn't ideal.",
         "Rerouting needs a data connection. Without one, it keeps guiding you along the original route.",
         "Battery range estimates need at least 3 logged rides and get better with more. They assume your riding stays fairly consistent.",

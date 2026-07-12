@@ -277,7 +277,10 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         guard let location = locations.last else { return }
 
-        if location.horizontalAccuracy < 0 || location.horizontalAccuracy > 65 {
+        // Reject low-confidence fixes. On a path running close to a parallel road, loose
+        // fixes are what make the route appear to jump onto the street. 30m is a reasonable
+        // balance — tighter than this and you'd drop too many fixes in tree cover.
+        if location.horizontalAccuracy < 0 || location.horizontalAccuracy > 30 {
             signalQuality = .weak
             return
         }
