@@ -1,4 +1,4 @@
-# SpeedApp (MPH Tracker)
+# Epstein's GPS
 
 A GPS speedometer, ride recorder, and turn-by-turn navigator for electric scooters. No paywalls, no subscriptions.
 
@@ -25,7 +25,9 @@ A GPS speedometer, ride recorder, and turn-by-turn navigator for electric scoote
 ### Map
 - Search a destination, tap a place on the map, or long-press to drop a pin
 - Real road routing with distance and ETA
-- Spoken turn-by-turn directions with adjustable voice speed and a mute toggle
+- Spoken turn-by-turn directions — a heads-up before each turn, then a final call at the turn
+- Automatic rerouting if you leave the route
+- Adjustable voice speed and a mute toggle
 
 ### History
 Split into two sections:
@@ -110,7 +112,7 @@ A stale in-app feature list is worse than none.
 
 ## Customizing
 
-- **App name:** `CFBundleDisplayName` in `project.yml`
+- **App name:** `CFBundleDisplayName` in `project.yml` (currently "Epstein's GPS")
 - **App icon:** replace `Sources/SpeedApp/Assets.xcassets/AppIcon.appiconset/icon-1024.png` with a 1024×1024 PNG (no transparency, no rounded corners)
 
 ## Building locally (with a Mac)
@@ -126,7 +128,7 @@ open SpeedApp.xcodeproj
 - Location permission is required for any speed reading.
 - iPhone GPS updates about once per second. The displayed number is interpolated between fixes to look smooth, but that's the underlying data rate.
 - Navigation uses Apple's driving routes. There's no scooter-specific routing in MapKit, so it may route onto roads that aren't ideal for a scooter.
-- Navigation does not reroute if you go off-path. It keeps guiding along the original route.
+- Rerouting requires a data connection. Without one, guidance continues along the original route.
 - Graphs are downsampled for display on long rides. Drag-to-inspect still reads full-resolution data.
 - Exporting a route map downloads map tiles, so it needs a network connection and takes a second or two.
 - GPS altitude is noisier than horizontal position. Elevation numbers only count changes above ~1.5 m and should be treated as approximate.
@@ -136,6 +138,8 @@ open SpeedApp.xcodeproj
 ## Changelog
 
 **2.1**
+- Automatic rerouting when you leave the route
+- Turn announcements now warn you before the turn, not just at it
 - "What This App Does" screen in Settings
 - CSV export (rides summary and per-ride raw data)
 - History split into Rides and Lifetime Totals

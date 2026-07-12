@@ -131,7 +131,11 @@ struct AboutView: View {
             ),
             Feature(
                 name: "Turn-by-turn navigation",
-                detail: "Real road routing with distance and ETA, and spoken directions as you ride. Mute or change the voice speed any time."
+                detail: "Real road routing with distance and ETA, and spoken directions as you ride. You get a heads-up before each turn and a final call at the turn itself. Mute or change the voice speed any time."
+            ),
+            Feature(
+                name: "Automatic rerouting",
+                detail: "If you leave the route, it recalculates a new one from where you actually are, just like Apple Maps."
             )
         ]),
 
@@ -213,7 +217,7 @@ struct AboutView: View {
         "Speed comes from GPS, which updates about once a second. The number on screen is smoothed to look fluid, but that's the real data rate underneath.",
         "Elevation is the noisiest thing GPS measures. Treat those numbers as approximate.",
         "Navigation uses Apple's driving routes — there's no scooter-specific routing available, so it may occasionally send you down a road that isn't ideal.",
-        "Navigation won't recalculate if you go off-route. It keeps guiding you along the original path.",
+        "Rerouting needs a data connection. Without one, it keeps guiding you along the original route.",
         "Battery range estimates need at least 3 logged rides and get better with more. They assume your riding stays fairly consistent.",
         "Exporting a route map needs an internet connection, since it downloads map tiles."
     ]

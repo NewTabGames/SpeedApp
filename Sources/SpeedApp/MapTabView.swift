@@ -215,24 +215,40 @@ struct MapTabView: View {
 
     private var navigationBanner: some View {
         VStack(spacing: 10) {
-            HStack(alignment: .top, spacing: 12) {
-                Image(systemName: "arrow.turn.up.right")
-                    .font(.title2)
-                    .foregroundStyle(settings.accent.color)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(navigation.currentInstruction)
+            if navigation.isRerouting {
+                HStack(spacing: 10) {
+                    ProgressView()
+                    Text("Recalculating route…")
                         .font(.headline)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Text("in \(distanceString(navigation.distanceToNextManeuverMeters))")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                    Spacer()
                 }
-                Spacer()
-                Button {
-                    navigation.voiceEnabled.toggle()
-                } label: {
-                    Image(systemName: navigation.voiceEnabled ? "speaker.wave.2.fill" : "speaker.slash.fill")
-                        .foregroundStyle(.secondary)
+            } else {
+                HStack(alignment: .top, spacing: 12) {
+                    Image(systemName: "arrow.turn.up.right")
+                        .font(.title2)
+                        .foregroundStyle(settings.accent.color)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(navigation.currentInstruction)
+                            .font(.headline)
+                            .fixedSize(horizontal: false, vertical: true)
+                        HStack(spacing: 6) {
+                            Text("in \(distanceString(navigation.distanceToNextManeuverMeters))")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                            if navigation.isOffRoute {
+                                Text("• Off route")
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(.orange)
+                            }
+                        }
+                    }
+                    Spacer()
+                    Button {
+                        navigation.voiceEnabled.toggle()
+                    } label: {
+                        Image(systemName: navigation.voiceEnabled ? "speaker.wave.2.fill" : "speaker.slash.fill")
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
 
