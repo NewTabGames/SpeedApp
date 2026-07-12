@@ -28,6 +28,7 @@ A GPS speedometer, ride recorder, and turn-by-turn navigator for electric scoote
 - Spoken turn-by-turn directions — a heads-up before each turn, then a final call at the turn
 - Automatic rerouting if you leave the route
 - Adjustable voice speed and a mute toggle
+- Music (Spotify, podcasts) only dips while a direction is being spoken, then returns to full volume
 
 ### History
 Split into two sections:
@@ -138,6 +139,7 @@ open SpeedApp.xcodeproj
 ## Changelog
 
 **2.1**
+- Fixed music staying quiet the whole time the app was open — it now only dips while speaking a direction
 - Automatic rerouting when you leave the route
 - Turn announcements now warn you before the turn, not just at it
 - "What This App Does" screen in Settings

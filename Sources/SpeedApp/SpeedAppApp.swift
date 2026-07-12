@@ -9,10 +9,14 @@ struct SpeedAppApp: App {
     @StateObject private var navigation = NavigationStore()
 
     init() {
-        // Lets spoken turn-by-turn prompts play out loud (not muted by the silent switch)
-        // and duck any other audio briefly while speaking.
-        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .voicePrompt, options: [.duckOthers])
-        try? AVAudioSession.sharedInstance().setActive(true)
+        // Deliberately does NOT activate the audio session here.
+        //
+        // The session uses .duckOthers so spoken directions are audible over music, but
+        // ducking lasts as long as the session is *active*. Activating at launch meant
+        // Spotify stayed quiet the whole time the app was open. NavigationStore now
+        // activates the session immediately before speaking and releases it as soon as
+        // the utterance finishes, so music is only dipped for the second or two it takes
+        // to say "turn right".
     }
 
     var body: some Scene {

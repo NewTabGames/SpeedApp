@@ -5,7 +5,7 @@ import AVFoundation
 
 /// Handles destination search, route calculation, spoken turn-by-turn guidance,
 /// and rerouting when you leave the planned route.
-final class NavigationStore: NSObject, ObservableObject, MKLocalSearchCompleterDelegate {
+final class NavigationStore: NSObject, ObservableObject, MKLocalSearchCompleterDelegate, AVSpeechSynthesizerDelegate {
 
     // Search
     @Published var searchQuery: String = "" {
@@ -28,7 +28,15 @@ final class NavigationStore: NSObject, ObservableObject, MKLocalSearchCompleterD
     @Published var distanceRemainingMeters: Double = 0
     @Published var etaMinutes: Double = 0
     @Published var arrived: Bool = false
-    @Published var voiceEnabled: Bool = true
+    @Published var voiceEnabled: Bool = true {
+        didSet {
+            // Muting should shut up mid-sentence and hand the audio session straight back,
+            // not wait for the current direction to finish reading out over the music.
+            if !voiceEnabled {
+                synthesizer.stopSpeaking(at: .immediate)
+            }
+        }
+    }
 
     /// Set externally from SettingsStore; 0.3 (slow/clear) to 0.6 (fast/natural).
     var speechRate: Float = 0.5
@@ -70,6 +78,7 @@ final class NavigationStore: NSObject, ObservableObject, MKLocalSearchCompleterD
         super.init()
         completer.delegate = self
         completer.resultTypes = [.address, .pointOfInterest]
+        synthesizer.delegate = self
     }
 
     /// Biases search suggestions toward wherever the rider actually is.
@@ -390,10 +399,57 @@ final class NavigationStore: NSObject, ObservableObject, MKLocalSearchCompleterD
 
     private func speak(_ text: String) {
         guard voiceEnabled, !text.isEmpty else { return }
+
+        activateAudioSession()
+
         let utterance = AVSpeechUtterance(string: text)
         utterance.voice = AVSpeechSynthesisVoice(language: "en-US")
         utterance.rate = speechRate
         synthesizer.speak(utterance)
+    }
+
+    // MARK: - Audio session
+    //
+    // Spoken directions need to duck whatever's playing (Spotify, podcasts) so they're
+    // audible — but only for the moment they're actually speaking. Ducking is tied to the
+    // session being active, so the session is claimed right before an utterance and handed
+    // straight back afterwards. Any other app's audio returns to full volume immediately.
+
+    /// Claims the audio session so the next utterance is heard over music.
+    private func activateAudioSession() {
+        let session = AVAudioSession.sharedInstance()
+        do {
+            try session.setCategory(.playback, mode: .voicePrompt, options: [.duckOthers])
+            try session.setActive(true)
+        } catch {
+            // If the session can't be claimed, the direction just won't be ducked over
+            // music. Not worth interrupting navigation over.
+        }
+    }
+
+    /// Hands the audio session back. `.notifyOthersOnDeactivation` is what tells Spotify
+    /// to ramp back up to full volume — without it, music can stay quiet.
+    private func releaseAudioSession() {
+        // Multiple utterances can be queued back to back. Don't release mid-sequence,
+        // or the volume would bounce up and down between them.
+        guard !synthesizer.isSpeaking else { return }
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            try? AVAudioSession.sharedInstance().setActive(
+                false,
+                options: [.notifyOthersOnDeactivation]
+            )
+        }
+    }
+
+    // MARK: - AVSpeechSynthesizerDelegate
+
+    func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
+        releaseAudioSession()
+    }
+
+    func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
+        releaseAudioSession()
     }
 }
 

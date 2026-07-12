@@ -136,6 +136,10 @@ struct AboutView: View {
             Feature(
                 name: "Automatic rerouting",
                 detail: "If you leave the route, it recalculates a new one from where you actually are, just like Apple Maps."
+            ),
+            Feature(
+                name: "Plays nicely with music",
+                detail: "Spotify or whatever you're listening to only dips for the second it takes to speak a direction, then goes straight back to full volume."
             )
         ]),
 
