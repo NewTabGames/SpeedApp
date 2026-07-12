@@ -1,5 +1,6 @@
 import SwiftUI
 import Charts
+import UIKit
 
 struct ContentView: View {
     @EnvironmentObject var settings: SettingsStore
@@ -203,6 +204,7 @@ struct RecordView: View {
         .onChange(of: location.isRecording) { _, isRecording in
             UIApplication.shared.isIdleTimerDisabled = isRecording && settings.keepScreenAwake
         }
+    }
 
     private func unitString(_ mph: Double) -> String {
         String(format: "%.0f %@", settings.unit.convert(fromMph: mph), settings.unit.rawValue)
