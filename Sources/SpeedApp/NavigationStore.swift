@@ -287,11 +287,16 @@ final class NavigationStore: NSObject, ObservableObject, MKLocalSearchCompleterD
         let instruction = route.steps[stepIndex].instructions
         guard !instruction.isEmpty else { return }
 
+        // The banner shows the original ("Bull Run Dr" reads fine and fits better on screen).
+        // Only the spoken version gets abbreviations expanded, so the synthesizer says
+        // "Drive" instead of spelling out "D, R".
         currentInstruction = instruction
+        let spokenInstruction = SpeechText.spoken(instruction)
+
         if let prefix {
-            speak("\(prefix) \(instruction)")
+            speak("\(prefix) \(spokenInstruction)")
         } else {
-            speak(instruction)
+            speak(spokenInstruction)
         }
     }
 

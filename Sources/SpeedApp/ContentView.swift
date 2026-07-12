@@ -1140,7 +1140,8 @@ struct SettingsView: View {
 
     private func previewVoice() {
         previewSynth.stopSpeaking(at: .immediate)
-        let utterance = AVSpeechUtterance(string: "In 500 feet, turn right onto Main Street.")
+        let text = SpeechText.spoken("In 500 feet, turn right onto N Main St.")
+        let utterance = AVSpeechUtterance(string: text)
         utterance.voice = VoiceCatalog.voice(for: settings.voiceIdentifier)
         utterance.rate = Float(settings.voiceSpeechRate)
         previewSynth.speak(utterance)

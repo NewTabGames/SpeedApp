@@ -88,6 +88,7 @@ Both respect your unit setting (mph/mi or km/h/km), and column headers say which
 | `GraphDetailView.swift` | Full-screen graph with PNG export |
 | `MapExporter.swift` | Renders a ride's route map to a shareable PNG |
 | `VoiceCatalog.swift` | Lists the navigation voices installed on the device |
+| `SpeechText.swift` | Expands street abbreviations so directions read aloud properly |
 | `TripReplayView.swift` | Animated playback of a saved ride |
 | `CSVExporter.swift` | Ride summary and raw sample CSV export |
 | `AboutView.swift` | In-app "What This App Does" feature list |
@@ -143,6 +144,7 @@ open SpeedApp.xcodeproj
 ## Changelog
 
 **2.1**
+- Fixed the voice spelling out street abbreviations ("Bull Run D-R" instead of "Bull Run Drive")
 - Trip replay now has a real-time (1x) speed and interpolates for smooth motion
 - Rename is now available from the ride detail screen, not just swipe
 - Choose the navigation voice, with a preview button
