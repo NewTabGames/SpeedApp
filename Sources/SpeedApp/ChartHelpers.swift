@@ -27,6 +27,7 @@ struct InteractiveSpeedChart: View {
     let accent: Color
     var height: CGFloat = 220
     var showAxes: Bool = true
+    var lineStyle: ChartLineStyle = .smooth
 
     @State private var selectedTime: Double?
 
@@ -54,14 +55,14 @@ struct InteractiveSpeedChart: View {
                     y: .value("Speed", unit.convert(fromMph: sample.mph))
                 )
                 .foregroundStyle(accent)
-                .interpolationMethod(.catmullRom)
+                .interpolationMethod(lineStyle == .smooth ? .catmullRom : .linear)
 
                 AreaMark(
                     x: .value("Time", sample.offsetSeconds),
                     y: .value("Speed", unit.convert(fromMph: sample.mph))
                 )
                 .foregroundStyle(accent.opacity(0.12))
-                .interpolationMethod(.catmullRom)
+                .interpolationMethod(lineStyle == .smooth ? .catmullRom : .linear)
 
                 if let selectedTime, let nearest = nearestSample(to: selectedTime) {
                     RuleMark(x: .value("Selected", nearest.offsetSeconds))
@@ -79,7 +80,14 @@ struct InteractiveSpeedChart: View {
             .chartXSelection(value: $selectedTime)
             .frame(height: height)
             .chartXAxis(showAxes ? .visible : .hidden)
-            .chartYAxis(showAxes ? .visible : .hidden)
+            .chartYAxis {
+                if showAxes {
+                    AxisMarks { _ in
+                        AxisGridLine()
+                        AxisValueLabel(format: .number.precision(.fractionLength(0)))
+                    }
+                }
+            }
             .chartYAxisLabel(showAxes ? unit.rawValue.lowercased() : "")
         }
     }

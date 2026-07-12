@@ -15,7 +15,8 @@ struct GraphDetailView: View {
                     samples: recording.samples,
                     unit: settings.unit,
                     accent: settings.accent.color,
-                    height: 320
+                    height: 320,
+                    lineStyle: settings.chartLineStyle
                 )
                 .padding(.horizontal)
                 .padding(.top, 8)
@@ -129,6 +130,12 @@ private struct ExportableGraphImage: View {
             }
             .frame(height: 260)
             .chartYAxisLabel(settings.unit.rawValue.lowercased())
+            .chartYAxis {
+                AxisMarks { _ in
+                    AxisGridLine()
+                    AxisValueLabel(format: .number.precision(.fractionLength(0)))
+                }
+            }
 
             HStack(spacing: 24) {
                 statBlock("MAX", String(format: "%.0f %@", settings.unit.convert(fromMph: recording.maxMph), settings.unit.rawValue))

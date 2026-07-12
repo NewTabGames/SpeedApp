@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import MapKit
 import Combine
 
 enum SpeedUnit: String, CaseIterable, Codable, Identifiable {
@@ -35,6 +36,8 @@ enum AccentTheme: String, CaseIterable, Codable, Identifiable {
     case blue = "Blue"
     case red = "Red"
     case purple = "Purple"
+    case teal = "Teal"
+    case pink = "Pink"
     var id: String { rawValue }
 
     var color: Color {
@@ -44,6 +47,8 @@ enum AccentTheme: String, CaseIterable, Codable, Identifiable {
         case .blue: return .blue
         case .red: return .red
         case .purple: return .purple
+        case .teal: return .teal
+        case .pink: return .pink
         }
     }
 }
@@ -62,6 +67,48 @@ enum SmoothingLevel: String, CaseIterable, Codable, Identifiable, Equatable {
         case .smooth: return 0.35
         }
     }
+}
+
+enum AppearanceMode: String, CaseIterable, Codable, Identifiable {
+    case system = "System"
+    case light = "Light"
+    case dark = "Dark"
+    var id: String { rawValue }
+
+    var colorScheme: ColorScheme? {
+        switch self {
+        case .system: return nil
+        case .light: return .light
+        case .dark: return .dark
+        }
+    }
+}
+
+enum MapStyleOption: String, CaseIterable, Codable, Identifiable {
+    case standard = "Standard"
+    case satellite = "Satellite"
+    case hybrid = "Hybrid"
+    var id: String { rawValue }
+
+    var mapStyle: MapStyle {
+        switch self {
+        case .standard: return .standard
+        case .satellite: return .imagery
+        case .hybrid: return .hybrid
+        }
+    }
+}
+
+enum GPSAccuracyMode: String, CaseIterable, Codable, Identifiable, Equatable {
+    case highAccuracy = "High Accuracy"
+    case batterySaver = "Battery Saver"
+    var id: String { rawValue }
+}
+
+enum ChartLineStyle: String, CaseIterable, Codable, Identifiable, Equatable {
+    case smooth = "Smooth Curve"
+    case straight = "Straight Lines"
+    var id: String { rawValue }
 }
 
 final class SettingsStore: ObservableObject {
@@ -83,6 +130,25 @@ final class SettingsStore: ObservableObject {
     @Published var maxSpeedAlertMph: Double {
         didSet { UserDefaults.standard.set(maxSpeedAlertMph, forKey: Keys.alertValue) }
     }
+    @Published var appearance: AppearanceMode {
+        didSet { UserDefaults.standard.set(appearance.rawValue, forKey: Keys.appearance) }
+    }
+    @Published var mapStyle: MapStyleOption {
+        didSet { UserDefaults.standard.set(mapStyle.rawValue, forKey: Keys.mapStyle) }
+    }
+    @Published var gpsAccuracy: GPSAccuracyMode {
+        didSet { UserDefaults.standard.set(gpsAccuracy.rawValue, forKey: Keys.gpsAccuracy) }
+    }
+    @Published var chartLineStyle: ChartLineStyle {
+        didSet { UserDefaults.standard.set(chartLineStyle.rawValue, forKey: Keys.chartLineStyle) }
+    }
+    @Published var hapticsEnabled: Bool {
+        didSet { UserDefaults.standard.set(hapticsEnabled, forKey: Keys.haptics) }
+    }
+    /// 0.3 (slow/clear) to 0.6 (fast/natural). AVSpeechUtterance default is ~0.5.
+    @Published var voiceSpeechRate: Double {
+        didSet { UserDefaults.standard.set(voiceSpeechRate, forKey: Keys.voiceRate) }
+    }
 
     private enum Keys {
         static let unit = "settings.unit"
@@ -91,6 +157,12 @@ final class SettingsStore: ObservableObject {
         static let keepAwake = "settings.keepAwake"
         static let alertEnabled = "settings.alertEnabled"
         static let alertValue = "settings.alertValue"
+        static let appearance = "settings.appearance"
+        static let mapStyle = "settings.mapStyle"
+        static let gpsAccuracy = "settings.gpsAccuracy"
+        static let chartLineStyle = "settings.chartLineStyle"
+        static let haptics = "settings.haptics"
+        static let voiceRate = "settings.voiceRate"
     }
 
     init() {
@@ -101,5 +173,11 @@ final class SettingsStore: ObservableObject {
         keepScreenAwake = d.object(forKey: Keys.keepAwake) as? Bool ?? true
         maxSpeedAlertEnabled = d.object(forKey: Keys.alertEnabled) as? Bool ?? false
         maxSpeedAlertMph = d.object(forKey: Keys.alertValue) as? Double ?? 20
+        appearance = AppearanceMode(rawValue: d.string(forKey: Keys.appearance) ?? "") ?? .dark
+        mapStyle = MapStyleOption(rawValue: d.string(forKey: Keys.mapStyle) ?? "") ?? .standard
+        gpsAccuracy = GPSAccuracyMode(rawValue: d.string(forKey: Keys.gpsAccuracy) ?? "") ?? .highAccuracy
+        chartLineStyle = ChartLineStyle(rawValue: d.string(forKey: Keys.chartLineStyle) ?? "") ?? .smooth
+        hapticsEnabled = d.object(forKey: Keys.haptics) as? Bool ?? true
+        voiceSpeechRate = d.object(forKey: Keys.voiceRate) as? Double ?? 0.5
     }
 }

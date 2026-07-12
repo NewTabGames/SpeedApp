@@ -12,6 +12,8 @@ struct ContentView: View {
                 .tabItem { Label("Speed", systemImage: "speedometer") }
             RecordView()
                 .tabItem { Label("Record", systemImage: "record.circle") }
+            MapTabView()
+                .tabItem { Label("Map", systemImage: "map") }
             HistoryView()
                 .tabItem { Label("History", systemImage: "clock.arrow.circlepath") }
             SettingsView()
@@ -119,6 +121,9 @@ struct SpeedView: View {
         .onChange(of: location.speedMph) { _, newValue in
             if settings.maxSpeedAlertEnabled && newValue >= settings.maxSpeedAlertMph && !didAlert {
                 didAlert = true
+                if settings.hapticsEnabled {
+                    UINotificationFeedbackGenerator().notificationOccurred(.warning)
+                }
             }
         }
     }
@@ -155,48 +160,49 @@ struct RecordView: View {
         ZStack {
             backgroundGradient()
 
-            VStack(spacing: 20) {
-                Text(location.isRecording ? "Recording…" : "Ready to Record")
-                    .font(.headline)
-                    .foregroundStyle(location.isRecording ? .red : .secondary)
-                    .padding(.top, 16)
-
-                Text(elapsedString(location.recordingElapsed))
-                    .font(.system(size: 44, weight: .bold, design: .rounded))
-                    .monospacedDigit()
-
-                InteractiveSpeedChart(
-                    samples: location.recordingSamples,
-                    unit: settings.unit,
-                    accent: settings.accent.color,
-                    height: 180
-                )
-                .padding(.horizontal)
-
-                HStack(spacing: 0) {
-                    statBlock(title: "CURRENT", value: unitString(location.speedMph))
-                    statBlock(title: "MAX", value: unitString(location.recordingMaxMph))
-                    statBlock(title: "AVG", value: unitString(location.recordingAvgMph))
-                    statBlock(title: "DISTANCE", value: distanceString(location.recordingDistanceMiles))
-                }
-                .padding(.vertical, 14)
-                .background(Color.white.opacity(0.05))
-                .clipShape(RoundedRectangle(cornerRadius: 16))
-                .padding(.horizontal)
-
-                Spacer()
-
-                Button(action: toggleRecording) {
-                    Text(location.isRecording ? "Stop & Save Recording" : "Start Recording")
+            ScrollView {
+                VStack(spacing: 20) {
+                    Text(location.isRecording ? "Recording…" : "Ready to Record")
                         .font(.headline)
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(location.isRecording ? Color.red : settings.accent.color)
-                        .foregroundStyle(.white)
-                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                        .foregroundStyle(location.isRecording ? .red : .secondary)
+                        .padding(.top, 16)
+
+                    Text(elapsedString(location.recordingElapsed))
+                        .font(.system(size: 44, weight: .bold, design: .rounded))
+                        .monospacedDigit()
+
+                    InteractiveSpeedChart(
+                        samples: location.recordingSamples,
+                        unit: settings.unit,
+                        accent: settings.accent.color,
+                        height: 180,
+                        lineStyle: settings.chartLineStyle
+                    )
+                    .padding(.horizontal)
+
+                    HStack(spacing: 0) {
+                        statBlock(title: "CURRENT", value: unitString(location.speedMph))
+                        statBlock(title: "MAX", value: unitString(location.recordingMaxMph))
+                        statBlock(title: "AVG", value: unitString(location.recordingAvgMph))
+                        statBlock(title: "DISTANCE", value: distanceString(location.recordingDistanceMiles))
+                    }
+                    .padding(.vertical, 14)
+                    .background(Color.white.opacity(0.05))
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                    .padding(.horizontal)
+
+                    Button(action: toggleRecording) {
+                        Text(location.isRecording ? "Stop & Save Recording" : "Start Recording")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(location.isRecording ? Color.red : settings.accent.color)
+                            .foregroundStyle(.white)
+                            .clipShape(RoundedRectangle(cornerRadius: 14))
+                    }
+                    .padding(.horizontal)
+                    .padding(.bottom, 20)
                 }
-                .padding(.horizontal)
-                .padding(.bottom, 20)
             }
         }
         .onChange(of: location.isRecording) { _, isRecording in
@@ -226,6 +232,9 @@ struct RecordView: View {
     }
 
     private func toggleRecording() {
+        if settings.hapticsEnabled {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        }
         if location.isRecording {
             if let result = location.stopRecording() {
                 runStore.addRecording(samples: result.samples, maxMph: result.maxMph, avgMph: result.avgMph, duration: result.duration, distanceMiles: result.distanceMiles)
@@ -354,6 +363,7 @@ struct RecordingDetailView: View {
                         }
                     }
                     .frame(height: 280)
+                    .mapStyle(settings.mapStyle.mapStyle)
                     .clipShape(RoundedRectangle(cornerRadius: 16))
                     .padding(.horizontal)
                 } else {
@@ -381,7 +391,8 @@ struct RecordingDetailView: View {
                             samples: recording.samples,
                             unit: settings.unit,
                             accent: settings.accent.color,
-                            height: 160
+                            height: 160,
+                            lineStyle: settings.chartLineStyle
                         )
                         HStack {
                             Text("View Full Graph & Export")
@@ -425,6 +436,10 @@ struct RecordingDetailView: View {
 struct SettingsView: View {
     @EnvironmentObject var settings: SettingsStore
     @EnvironmentObject var runStore: RunStore
+    @EnvironmentObject var location: LocationManager
+
+    @State private var alertSpeedText: String = ""
+    @FocusState private var alertFieldFocused: Bool
 
     var body: some View {
         NavigationView {
@@ -439,6 +454,13 @@ struct SettingsView: View {
                 }
 
                 Section("Appearance") {
+                    Picker("Theme", selection: $settings.appearance) {
+                        ForEach(AppearanceMode.allCases) { mode in
+                            Text(mode.rawValue).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+
                     Picker("Accent Color", selection: $settings.accent) {
                         ForEach(AccentTheme.allCases) { theme in
                             HStack {
@@ -450,20 +472,61 @@ struct SettingsView: View {
                     }
                 }
 
+                Section("Map") {
+                    Picker("Map Style", selection: $settings.mapStyle) {
+                        ForEach(MapStyleOption.allCases) { style in
+                            Text(style.rawValue).tag(style)
+                        }
+                    }
+                }
+
+                Section {
+                    Picker("Graph Line Style", selection: $settings.chartLineStyle) {
+                        ForEach(ChartLineStyle.allCases) { style in
+                            Text(style.rawValue).tag(style)
+                        }
+                    }
+                } header: {
+                    Text("Graphs")
+                }
+
                 Section {
                     Picker("Speed Smoothing", selection: $settings.smoothing) {
                         ForEach(SmoothingLevel.allCases) { level in
                             Text(level.rawValue).tag(level)
                         }
                     }
+
+                    Picker("GPS Mode", selection: $settings.gpsAccuracy) {
+                        ForEach(GPSAccuracyMode.allCases) { mode in
+                            Text(mode.rawValue).tag(mode)
+                        }
+                    }
                 } header: {
                     Text("Reading Behavior")
                 } footer: {
-                    Text("Responsive reacts fastest to speed changes but may jitter slightly. Smooth is steadier but has more lag.")
+                    Text("Responsive reacts fastest to speed changes but may jitter. Battery Saver reduces GPS precision to extend battery life on longer rides.")
                 }
 
                 Section {
                     Toggle("Keep Screen Awake While Recording", isOn: $settings.keepScreenAwake)
+                    Toggle("Haptic Feedback", isOn: $settings.hapticsEnabled)
+                } header: {
+                    Text("Behavior")
+                }
+
+                Section {
+                    HStack {
+                        Text("Voice Speed")
+                        Spacer()
+                        Text(voiceRateLabel)
+                            .foregroundStyle(.secondary)
+                    }
+                    Slider(value: $settings.voiceSpeechRate, in: 0.3...0.6, step: 0.05)
+                } header: {
+                    Text("Navigation Voice")
+                } footer: {
+                    Text("Controls how fast spoken turn-by-turn directions are read out.")
                 }
 
                 Section {
@@ -472,16 +535,32 @@ struct SettingsView: View {
                         HStack {
                             Text("Alert above")
                             Spacer()
-                            Text("\(Int(settings.maxSpeedAlertMph)) mph")
+                            TextField("0", text: $alertSpeedText)
+                                .keyboardType(.numberPad)
+                                .multilineTextAlignment(.trailing)
+                                .focused($alertFieldFocused)
+                                .frame(width: 70)
+                                .onChange(of: alertSpeedText) { _, newValue in
+                                    let digits = newValue.filter(\.isWholeNumber)
+                                    if digits != newValue { alertSpeedText = digits }
+                                    if let value = Double(digits), value > 0 {
+                                        settings.maxSpeedAlertMph = settings.unit == .mph ? value : value / 1.60934
+                                    }
+                                }
+                            Text(settings.unit.rawValue)
                                 .foregroundStyle(.secondary)
                         }
-                        Slider(value: $settings.maxSpeedAlertMph, in: 5...60, step: 1)
                     }
                 } header: {
                     Text("Safety")
+                } footer: {
+                    Text("Get a vibration and on-screen alert when you exceed this speed.")
                 }
 
                 Section {
+                    Button("Reset Max Speed", role: .destructive) {
+                        location.resetMaxSpeed()
+                    }
                     Button("Clear All Recordings", role: .destructive) {
                         runStore.clearAllRecordings()
                     }
@@ -493,13 +572,41 @@ struct SettingsView: View {
                     HStack {
                         Text("Version")
                         Spacer()
-                        Text("1.0")
+                        Text("2.0")
+                            .foregroundStyle(.secondary)
+                    }
+                    HStack {
+                        Text("Saved Recordings")
+                        Spacer()
+                        Text("\(runStore.recordings.count)")
                             .foregroundStyle(.secondary)
                     }
                 }
             }
             .navigationTitle("Settings")
+            .toolbar {
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") { alertFieldFocused = false }
+                }
+            }
+            .onAppear { syncAlertText() }
+            .onChange(of: settings.unit) { _, _ in syncAlertText() }
         }
+    }
+
+    private var voiceRateLabel: String {
+        switch settings.voiceSpeechRate {
+        case ..<0.4: return "Slow"
+        case ..<0.52: return "Normal"
+        default: return "Fast"
+        }
+    }
+
+    /// Keeps the text field showing the alert speed in whatever unit is currently selected.
+    private func syncAlertText() {
+        let displayed = settings.unit.convert(fromMph: settings.maxSpeedAlertMph)
+        alertSpeedText = String(Int(displayed.rounded()))
     }
 }
 

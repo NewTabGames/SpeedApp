@@ -23,6 +23,7 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
     @Published var maxSpeedMph: Double = 0
     @Published var authorizationStatus: CLAuthorizationStatus = .notDetermined
     @Published var signalQuality: SignalQuality = .acquiring
+    @Published var currentLocation: CLLocation?
 
     // Recording session
     @Published var isRecording: Bool = false
@@ -73,6 +74,18 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
 
     func resetMaxSpeed() {
         maxSpeedMph = 0
+    }
+
+    /// Battery saver trades some precision/update frequency for meaningfully less power draw.
+    func applyAccuracyMode(_ mode: GPSAccuracyMode) {
+        switch mode {
+        case .highAccuracy:
+            manager.desiredAccuracy = kCLLocationAccuracyBestForNavigation
+            manager.distanceFilter = kCLDistanceFilterNone
+        case .batterySaver:
+            manager.desiredAccuracy = kCLLocationAccuracyNearestTenMeters
+            manager.distanceFilter = 5
+        }
     }
 
     // MARK: - Recording
@@ -126,6 +139,7 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
         } else {
             signalQuality = .good
         }
+        currentLocation = location
 
         let smoothed: Double
         if let previous = emaSpeed {
