@@ -281,10 +281,8 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         guard let location = locations.last else { return }
 
-        // Reject low-confidence fixes. On a path running close to a parallel road, loose
-        // fixes are what make the route appear to jump onto the street. 30m is a reasonable
-        // balance — tighter than this and you'd drop too many fixes in tree cover.
-        if location.horizontalAccuracy < 0 || location.horizontalAccuracy > 30 {
+        // Reject clearly invalid fixes outright (negative accuracy = no fix).
+        if location.horizontalAccuracy < 0 {
             signalQuality = .weak
             return
         }
@@ -307,12 +305,18 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
         }
         emaSpeed = smoothed
 
+        // The live speedometer always updates — a valid fix is a valid speed reading,
+        // even if it's not precise enough to trust for drawing the route.
         speedMph = smoothed
         if smoothed > maxSpeedMph {
             maxSpeedMph = smoothed
         }
 
         handleAutoPause(currentMph: smoothed)
+
+        // Always call this so the ride timer keeps advancing. Whether this fix is precise
+        // enough to add to the route is decided inside, so a loose-GPS patch doesn't stall
+        // the clock — it just leaves a small gap in the drawn path.
         handleRecordingLogic(currentMph: smoothed, location: location)
     }
 
@@ -348,12 +352,18 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
     private func handleRecordingLogic(currentMph: Double, location: CLLocation) {
         guard isRecording, let start = recordingStartDate else { return }
 
-        // Elapsed excludes any time spent paused.
+        // Elapsed excludes any time spent paused. Updated on every fix so the timer never
+        // stalls, even during a low-accuracy GPS patch.
         let openPause = pauseBeganAt.map { Date().timeIntervalSince($0) } ?? 0
         recordingElapsed = max(Date().timeIntervalSince(start) - pausedAccumulated - openPause, 0)
 
         // While paused we stop collecting entirely — no samples, no distance, no elevation.
         guard !isPaused else { return }
+
+        // Only add high-confidence fixes to the route. On a path near a parallel road, loose
+        // fixes (>30 m error) are what make the drawn line jump onto the street. The live
+        // speedometer already updated from this fix regardless; this only gates the recording.
+        guard location.horizontalAccuracy <= 30 else { return }
 
         recordingSamples.append(SpeedSample(
             offsetSeconds: recordingElapsed,
