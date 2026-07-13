@@ -180,6 +180,7 @@ struct TripReplayView: View {
 
             HStack(spacing: 24) {
                 Button {
+                    Haptics.tap()
                     playbackTime = 0
                     recenter()
                 } label: {
@@ -188,6 +189,7 @@ struct TripReplayView: View {
                 }
 
                 Button {
+                    Haptics.tap()
                     togglePlayback()
                 } label: {
                     Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
@@ -198,6 +200,7 @@ struct TripReplayView: View {
                 Menu {
                     ForEach([0.5, 1.0, 2.0, 4.0, 8.0], id: \.self) { rate in
                         Button {
+                            Haptics.selection()
                             speedMultiplier = rate
                         } label: {
                             Text(rateLabel(rate))

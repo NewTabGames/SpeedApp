@@ -212,7 +212,7 @@ struct AboutView: View {
             ),
             Feature(
                 name: "Speed-colored routes",
-                detail: "Saved routes can shade from pale (slow) to deep (fast) in your accent color, so you can see at a glance where you were flying and where you crawled. Exported route images match. Toggle it under Map in Settings."
+                detail: "Saved routes shade from muted (slow) to bright and vivid (fast) in your accent color, so you can see at a glance where you were flying and where you crawled. Exported route images match. Toggle it under Map in Settings."
             ),
             Feature(
                 name: "Graph style",
@@ -228,7 +228,7 @@ struct AboutView: View {
             ),
             Feature(
                 name: "Haptics and confirmations",
-                detail: "Turn vibration on or off, and choose whether deleting your history asks first."
+                detail: "Subtle vibration on taps, tab switches, recording controls, and alerts — toggle it all off in one place. Also choose whether deleting your history asks first."
             )
         ])
     ]

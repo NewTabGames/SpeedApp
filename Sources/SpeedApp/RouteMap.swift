@@ -60,8 +60,12 @@ struct RouteMap: View {
 
     /// One segment per pair of adjacent samples, colored by the average speed of the pair.
     /// Consecutive samples share an endpoint so the line stays continuous.
+    ///
+    /// Built from a downsampled copy of the ride: an hour of GPS is ~3,600 samples, and one
+    /// MapPolyline per pair would put thousands of overlays on the map — visibly identical
+    /// to a few hundred, but slow enough to stutter. 240 segments is indistinguishable.
     private var speedSegments: [Segment] {
-        let samples = recording.samples
+        let samples = downsampled(recording.samples, maxPoints: 240)
         guard samples.count > 1 else { return [] }
 
         let range = speedRange

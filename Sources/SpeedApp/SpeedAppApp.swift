@@ -49,6 +49,7 @@ struct SpeedAppApp: App {
                     locationManager.autoPauseDelay = settings.autoPauseDelaySeconds
                     navigation.speechRate = Float(settings.voiceSpeechRate)
                     navigation.voiceIdentifier = settings.voiceIdentifier
+                    Haptics.enabled = settings.hapticsEnabled
                     syncScreenAwake()
                 }
                 .onChange(of: settings.smoothing) { _, newValue in
@@ -75,6 +76,9 @@ struct SpeedAppApp: App {
                 .onChange(of: locationManager.isRecording) { _, _ in syncScreenAwake() }
                 .onChange(of: settings.keepScreenAwake) { _, _ in syncScreenAwake() }
                 .onChange(of: navigation.isNavigating) { _, _ in syncScreenAwake() }
+                .onChange(of: settings.hapticsEnabled) { _, newValue in
+                    Haptics.enabled = newValue
+                }
                 .onReceive(locationManager.$currentLocation) { loc in
                     if let loc {
                         navigation.updateProgress(currentLocation: loc)

@@ -6,21 +6,30 @@ import AVFoundation
 
 struct ContentView: View {
     @EnvironmentObject var settings: SettingsStore
+    @State private var selectedTab = 0
 
     var body: some View {
-        TabView {
+        TabView(selection: $selectedTab) {
             SpeedView()
                 .tabItem { Label("Speed", systemImage: "speedometer") }
+                .tag(0)
             RecordView()
                 .tabItem { Label("Record", systemImage: "record.circle") }
+                .tag(1)
             MapTabView()
                 .tabItem { Label("Map", systemImage: "map") }
+                .tag(2)
             HistoryView()
                 .tabItem { Label("History", systemImage: "clock.arrow.circlepath") }
+                .tag(3)
             SettingsView()
                 .tabItem { Label("Settings", systemImage: "gearshape") }
+                .tag(4)
         }
         .tint(settings.accent.color)
+        .onChange(of: selectedTab) { _, _ in
+            Haptics.selection()
+        }
     }
 }
 
@@ -42,10 +51,36 @@ private func signalLabel(_ q: LocationManager.SignalQuality) -> String {
     }
 }
 
+/// Page background for the Speed and Record tabs. These were originally dark-only, so the
+/// gradient was hardcoded black — which meant Light mode had nothing to switch to. Now it
+/// follows the color scheme.
+private struct BackgroundGradient: View {
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        let colors: [Color] = colorScheme == .dark
+            ? [Color.black, Color(red: 0.08, green: 0.08, blue: 0.1)]
+            : [Color(red: 0.97, green: 0.97, blue: 0.98), Color(red: 0.90, green: 0.91, blue: 0.94)]
+
+        LinearGradient(colors: colors, startPoint: .top, endPoint: .bottom)
+            .ignoresSafeArea()
+    }
+}
+
 private func backgroundGradient() -> some View {
-    LinearGradient(colors: [Color.black, Color(red: 0.08, green: 0.08, blue: 0.1)],
-                   startPoint: .top, endPoint: .bottom)
-        .ignoresSafeArea()
+    BackgroundGradient()
+}
+
+/// Translucent fill for the stat cards. A white tint is invisible on a light background,
+/// so this flips to a dark tint in light mode.
+private struct CardFill: View {
+    @Environment(\.colorScheme) private var colorScheme
+    var opacity: Double = 0.05
+
+    var body: some View {
+        (colorScheme == .dark ? Color.white : Color.black)
+            .opacity(colorScheme == .dark ? opacity : opacity * 1.4)
+    }
 }
 
 // MARK: - Speed Tab
@@ -96,13 +131,14 @@ struct SpeedView: View {
                     statBlock(title: "MAX", value: String(format: "%.0f %@", displayMax, settings.unit.rawValue))
                 }
                 .padding(.vertical, 14)
-                .background(Color.white.opacity(0.05))
+                .background(CardFill())
                 .clipShape(RoundedRectangle(cornerRadius: 16))
                 .padding(.horizontal)
 
                 Spacer()
 
                 Button("Reset Max Speed") {
+                    Haptics.impact()
                     location.resetMaxSpeed()
                     speedAlertArmed = true
                 }
@@ -127,9 +163,7 @@ struct SpeedView: View {
                 if speedAlertArmed {
                     speedAlertArmed = false
                     showSpeedAlert = true
-                    if settings.hapticsEnabled {
-                        UINotificationFeedbackGenerator().notificationOccurred(.warning)
-                    }
+                    Haptics.warning()
                 }
             } else {
                 // Back under the limit — re-arm so the next crossing alerts again.
@@ -203,7 +237,20 @@ struct RecordView: View {
                 }
             }
         }
-        .sheet(isPresented: $showEndBatteryPrompt) {
+        .onAppear {
+            // The Speed tab normally kicks off GPS, but there's no guarantee the user visited
+            // it first. Without this, going straight to Record on a fresh install would record
+            // a ride with no permission prompt and zero GPS data.
+            location.requestPermission()
+            location.start()
+        }
+        .sheet(isPresented: $showEndBatteryPrompt, onDismiss: {
+            // Safety net: if the sheet was swiped away instead of using Skip/Save, the ride
+            // would otherwise be silently lost. Save it without battery info.
+            if pendingResult != nil {
+                finishSave(logBattery: false)
+            }
+        }) {
             endBatterySheet
         }
     }
@@ -257,7 +304,7 @@ struct RecordView: View {
                 .foregroundStyle(.secondary)
         }
         .padding()
-        .background(Color.white.opacity(0.05))
+        .background(CardFill())
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .padding(.horizontal)
         .onAppear {
@@ -318,7 +365,7 @@ struct RecordView: View {
             }
         }
         .padding(.vertical, 14)
-        .background(Color.white.opacity(0.05))
+        .background(CardFill())
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .padding(.horizontal)
     }
@@ -330,9 +377,7 @@ struct RecordView: View {
             if location.isRecording {
                 HStack(spacing: 10) {
                     Button {
-                        if settings.hapticsEnabled {
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        }
+                        Haptics.tap()
                         if location.isPaused {
                             location.resumeRecording()
                         } else {
@@ -346,7 +391,7 @@ struct RecordView: View {
                         .font(.headline)
                         .frame(maxWidth: .infinity)
                         .padding()
-                        .background(Color.white.opacity(0.12))
+                        .background(CardFill(opacity: 0.12))
                         .clipShape(RoundedRectangle(cornerRadius: 14))
                     }
 
@@ -364,9 +409,7 @@ struct RecordView: View {
                 }
             } else {
                 Button {
-                    if settings.hapticsEnabled {
-                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    }
+                    Haptics.impact()
                     batteryFieldFocused = false
                     location.startRecording()
                 } label: {
@@ -387,9 +430,7 @@ struct RecordView: View {
     // MARK: Actions
 
     private func stopAndPrompt() {
-        if settings.hapticsEnabled {
-            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        }
+        Haptics.impact()
         guard let result = location.stopRecording() else { return }
         pendingResult = result
 
@@ -409,6 +450,7 @@ struct RecordView: View {
         let end = logBattery ? Double(batteryEndText) : nil
 
         runStore.addRecording(result: result, batteryStart: start, batteryEnd: end)
+        Haptics.success()
 
         pendingResult = nil
         if let end { batteryStartText = String(Int(end)) }
@@ -506,7 +548,10 @@ struct HistoryView: View {
         .tint(settings.accent.color)
         .alert("Clear History?", isPresented: $showClearConfirmation) {
             Button("Cancel", role: .cancel) {}
-            Button("Clear All", role: .destructive) { runStore.clearAllRecordings() }
+            Button("Clear All", role: .destructive) {
+                Haptics.warning()
+                runStore.clearAllRecordings()
+            }
         } message: {
             Text("Are you sure you want to clear your history? This will permanently delete all \(runStore.recordings.count) saved recordings and can't be undone.")
         }
@@ -519,6 +564,7 @@ struct HistoryView: View {
             Button("Save") {
                 if let target = renameTarget {
                     runStore.rename(id: target.id, to: renameText)
+                    Haptics.success()
                 }
                 renameTarget = nil
             }
@@ -559,6 +605,7 @@ struct HistoryView: View {
                     }
                     .swipeActions(edge: .trailing) {
                         Button(role: .destructive) {
+                            Haptics.warning()
                             runStore.delete(id: rec.id)
                         } label: {
                             Label("Delete", systemImage: "trash")
@@ -1137,7 +1184,10 @@ struct SettingsView: View {
         }
         .alert("Clear History?", isPresented: $showClearConfirmation) {
             Button("Cancel", role: .cancel) {}
-            Button("Clear All", role: .destructive) { runStore.clearAllRecordings() }
+            Button("Clear All", role: .destructive) {
+                Haptics.warning()
+                runStore.clearAllRecordings()
+            }
         } message: {
             Text("Are you sure you want to clear your history? This will permanently delete all \(runStore.recordings.count) saved recordings and can't be undone.")
         }

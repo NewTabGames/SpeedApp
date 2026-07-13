@@ -76,9 +76,7 @@ struct MapTabView: View {
                         .onEnded { value in
                             guard case .second(true, let drag?) = value else { return }
                             if let coordinate = proxy.convert(drag.location, from: .local) {
-                                if settings.hapticsEnabled {
-                                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                                }
+                                Haptics.impact()
                                 navigation.setDestination(
                                     coordinate: coordinate,
                                     currentCoordinate: location.currentLocation?.coordinate
@@ -123,9 +121,7 @@ struct MapTabView: View {
                         // me as I move. Toggle.
                         Button {
                             setFollowMode(!followMode)
-                            if settings.hapticsEnabled {
-                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            }
+                            Haptics.tap()
                         } label: {
                             Image(systemName: followMode ? "location.fill.viewfinder" : "location.viewfinder")
                                 .font(.title2)
@@ -141,9 +137,7 @@ struct MapTabView: View {
                         Button {
                             if followMode { followMode = false }
                             recenterOnUser()
-                            if settings.hapticsEnabled {
-                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            }
+                            Haptics.tap()
                         } label: {
                             Image(systemName: "location")
                                 .font(.title2)

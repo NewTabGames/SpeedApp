@@ -90,6 +90,7 @@ Both respect your unit setting (mph/mi or km/h/km), and column headers say which
 | `MapExporter.swift` | Renders a ride's route map to a shareable PNG |
 | `RouteMap.swift` | Route map view with optional speed-based coloring and a legend |
 | `VoiceCatalog.swift` | Lists the navigation voices installed on the device |
+| `Haptics.swift` | Central haptic feedback helper, respects the Haptics setting |
 | `SpeechText.swift` | Expands street abbreviations so directions read aloud properly |
 | `TripReplayView.swift` | Animated playback of a saved ride |
 | `CSVExporter.swift` | Ride summary and raw sample CSV export |
@@ -146,6 +147,11 @@ open SpeedApp.xcodeproj
 ## Changelog
 
 **2.1**
+- Speed-colored routes are now much more distinct (muted-to-vivid, not just light-to-dark)
+- Expanded haptic feedback across tabs, buttons, and controls, unified under one setting
+- Fixed: swiping away the end-of-ride battery sheet silently discarded the ride — it now saves regardless
+- Fixed: opening the Record tab directly (without visiting Speed first) never started GPS
+- Fixed: speed-colored routes drew thousands of map overlays on long rides, causing stutter
 - Map: recenter button and a lock-on (follow) button
 - Fixed speed alert repeating while over the limit, and it now shows your chosen unit
 - Centralized screen-awake handling so recording and navigation don't conflict

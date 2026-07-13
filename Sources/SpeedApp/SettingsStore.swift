@@ -78,46 +78,53 @@ enum AccentTheme: String, CaseIterable, Codable, Identifiable {
     /// 1 (fastest, deep). Interpolates from a light tint of the hue toward a darkened
     /// version of it, so the whole route stays recognisably "your color" while still
     /// showing where you were fast or slow.
+    /// Speed shading for the colored route, 0 (slowest, pale) to 1 (fastest, deep).
+    ///
+    /// Piecewise ramp through three zones so speeds are visually distinct: the slow half
+    /// runs very-pale → the vivid pure accent, the fast half runs vivid → near-black.
+    /// A single pale→dark lerp left the whole midrange looking like the same color.
     func speedShade(_ t: Double) -> Color {
-        let clamped = max(0, min(1, t))
-        let (r, g, b) = rgb
-
-        // Pale end: mix heavily toward white. Deep end: scale the hue darker.
-        let lightMix = 0.75   // how white the slow end is
-        let darkScale = 0.55  // how dark the fast end is
-
-        let startR = r + (1 - r) * lightMix
-        let startG = g + (1 - g) * lightMix
-        let startB = b + (1 - b) * lightMix
-
-        let endR = r * darkScale
-        let endG = g * darkScale
-        let endB = b * darkScale
-
-        return Color(
-            red: startR + (endR - startR) * clamped,
-            green: startG + (endG - startG) * clamped,
-            blue: startB + (endB - startB) * clamped
-        )
+        let (r, g, b) = shadeComponents(t)
+        return Color(red: r, green: g, blue: b)
     }
 
     func speedShadeUIColor(_ t: Double) -> UIColor {
+        let (r, g, b) = shadeComponents(t)
+        return UIColor(red: r, green: g, blue: b, alpha: 1)
+    }
+
+    /// Maps a normalized speed (0 = slowest point of the ride, 1 = fastest) to a color.
+    ///
+    /// The old version only varied lightness (pale accent → dark accent), which was hard to
+    /// read: lightness is the weakest visual channel, and a *darkened* fast end disappeared
+    /// against dark satellite imagery. This varies saturation and brightness together —
+    /// slow is desaturated and muted (reads almost gray), fast is fully saturated and bright.
+    /// That's two channels moving at once, so the difference is obvious at a glance.
+    private func shadeComponents(_ t: Double) -> (Double, Double, Double) {
         let clamped = max(0, min(1, t))
         let (r, g, b) = rgb
-        let lightMix = 0.75
-        let darkScale = 0.55
-        let startR = r + (1 - r) * lightMix
-        let startG = g + (1 - g) * lightMix
-        let startB = b + (1 - b) * lightMix
-        let endR = r * darkScale
-        let endG = g * darkScale
-        let endB = b * darkScale
-        return UIColor(
-            red: startR + (endR - startR) * clamped,
-            green: startG + (endG - startG) * clamped,
-            blue: startB + (endB - startB) * clamped,
-            alpha: 1
-        )
+
+        // Perceived luminance of the accent, used as its gray equivalent.
+        let gray = 0.299 * r + 0.587 * g + 0.114 * b
+
+        // Slow end: heavily desaturated toward gray, and darkened a little.
+        let slowSaturation = 0.15   // almost no color
+        let slowBrightness = 0.55   // muted
+
+        // Fast end: fully saturated, pushed brighter than the base accent so it pops.
+        let fastSaturation = 1.0
+        let fastBrightness = 1.15
+
+        let saturation = slowSaturation + (fastSaturation - slowSaturation) * clamped
+        let brightness = slowBrightness + (fastBrightness - slowBrightness) * clamped
+
+        // Mix between gray and the accent hue by saturation, then scale by brightness.
+        func channel(_ c: Double) -> Double {
+            let mixed = gray + (c - gray) * saturation
+            return max(0, min(1, mixed * brightness))
+        }
+
+        return (channel(r), channel(g), channel(b))
     }
 }
 
