@@ -104,6 +104,26 @@ Both respect your unit setting (mph/mi or km/h/km), and column headers say which
 
 Recordings are stored as JSON in the app's Documents directory. All data stays on your device.
 
+
+## Privacy
+
+**Your data never leaves your phone.** No account, no server, no analytics, no third parties.
+The app makes no network calls with your data.
+
+| | |
+|---|---|
+| **What's stored** | Rides you record — GPS route, speed, elevation, and any battery levels you logged |
+| **Where** | `recordings.json` in the app's Documents directory, on your device only |
+| **When location is used** | While the app is open, and in the background *only* while actively recording. iOS shows a blue indicator during background use. |
+| **What's sent anywhere** | Nothing about you. Map search and route requests go to Apple Maps — that's what makes them work. |
+| **Deleting** | Swipe any ride to delete it, or Clear All Recordings in Settings. Deleting the app removes everything. |
+
+Recording never starts on its own — only when you tap Start.
+
+**If the app's data handling ever changes** (adding a server, analytics, or any network call),
+update this section and `AboutView.swift`'s `privacyPoints` *first*. A privacy statement that
+has drifted out of date is worse than none.
+
 ## Keeping docs in sync
 
 There are two places that describe what the app does: this README, and `AboutView.swift`
@@ -139,7 +159,7 @@ open SpeedApp.xcodeproj
 
 ## Limitations
 
-- Location permission is required for any speed reading. Background recording (with the phone locked) needs "Always" permission — with "While Using" only, recording pauses when the screen locks.
+- Location permission is required for any speed reading. Background recording (with the phone locked) needs **"Always"** permission — with "While Using" only, GPS stops when the screen locks and the ride gets cut short. The app shows a warning banner on the Speed and Record tabs when permission isn't set to Always, with a button that opens iOS Settings. Current status is always visible under Settings → Permissions.
 - iPhone GPS updates about once per second. The displayed number is interpolated between fixes to look smooth, but that's the underlying data rate.
 - Navigation uses Apple's driving routes. There's no scooter-specific routing in MapKit, so it may route onto roads that aren't ideal for a scooter.
 - Rerouting requires a data connection. Without one, guidance continues along the original route.
@@ -153,6 +173,7 @@ open SpeedApp.xcodeproj
 ## Changelog
 
 **2.1**
+- Warning banner when location isn't set to "Always", with a one-tap link to iOS Settings, plus a permission status row in Settings
 - Vehicle modes: Scooter, Car, Motorcycle, Walking — each with its own independent settings, mode-aware routing, and per-vehicle history and totals
 - Speed-colored routes are now much more distinct (muted-to-vivid, not just light-to-dark)
 - Expanded haptic feedback across tabs, buttons, and controls, unified under one setting

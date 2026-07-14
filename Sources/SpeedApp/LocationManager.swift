@@ -55,6 +55,24 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
 
     var isPaused: Bool { pauseState != .running }
 
+    // MARK: - Permission state
+
+    /// No location at all — nothing works.
+    var isLocationDenied: Bool {
+        authorizationStatus == .denied || authorizationStatus == .restricted
+    }
+
+    /// Location works while you're looking at the app, but iOS will cut GPS off the moment
+    /// the screen locks. Recording will freeze mid-ride without this being obvious, so it's
+    /// worth telling the rider before they set off rather than after they've lost a ride.
+    var needsAlwaysPermission: Bool {
+        authorizationStatus == .authorizedWhenInUse
+    }
+
+    var hasAlwaysPermission: Bool {
+        authorizationStatus == .authorizedAlways
+    }
+
     // MARK: - Settings-driven config
     /// Controls how fast the EMA reacts to new readings.
     var smoothingAlpha: Double = 0.6
@@ -103,12 +121,22 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
         // Don't let iOS auto-pause updates when it thinks you've stopped — we handle pausing
         // ourselves, and its heuristic is tuned for walking/driving, not scooters.
         manager.pausesLocationUpdatesAutomatically = false
+        // Start from the real status rather than assuming notDetermined, so any permission
+        // warning is correct on the very first frame instead of flickering in.
+        authorizationStatus = manager.authorizationStatus
     }
 
     func requestPermission() {
         // "Always" is what allows recording to continue while the phone is locked. iOS first
         // grants "When In Use" and later prompts to upgrade to Always after seeing background use.
         manager.requestAlwaysAuthorization()
+    }
+
+    /// Re-reads the current authorization. Called when the app returns to the foreground, so
+    /// that changing the setting in iOS Settings is reflected immediately rather than showing
+    /// a stale warning.
+    func refreshAuthorizationStatus() {
+        authorizationStatus = manager.authorizationStatus
     }
 
     deinit {

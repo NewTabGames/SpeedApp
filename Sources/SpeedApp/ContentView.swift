@@ -83,6 +83,71 @@ private struct CardFill: View {
     }
 }
 
+/// Warns when location permission isn't sufficient for what the rider is trying to do.
+///
+/// "While Using" is the dangerous case: everything looks fine until the screen locks, and
+/// then GPS silently stops and the ride is ruined. Better to say so up front, with a button
+/// that goes straight to the right place in iOS Settings.
+struct LocationPermissionBanner: View {
+    @EnvironmentObject var location: LocationManager
+
+    var body: some View {
+        if location.isLocationDenied {
+            banner(
+                icon: "location.slash.fill",
+                tint: .red,
+                title: "Location is off",
+                message: "This app can't measure speed without it. Turn on location access in Settings."
+            )
+        } else if location.needsAlwaysPermission {
+            banner(
+                icon: "exclamationmark.triangle.fill",
+                tint: .orange,
+                title: "Set location to \"Always\"",
+                message: "Right now it's set to \"While Using the App\". Recording will stop the moment your screen locks. Change it to Always so rides keep tracking in your pocket."
+            )
+        }
+    }
+
+    private func banner(icon: String, tint: Color, title: String, message: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                    .foregroundStyle(tint)
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+            }
+            Text(message)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Button {
+                Haptics.tap()
+                openSettings()
+            } label: {
+                Text("Open Settings")
+                    .font(.caption.weight(.semibold))
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(tint.opacity(0.12))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(tint.opacity(0.35), lineWidth: 1)
+        )
+        .padding(.horizontal)
+    }
+
+    /// Deep-links to this app's own page in iOS Settings, where the Location row lives.
+    private func openSettings() {
+        guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+        UIApplication.shared.open(url)
+    }
+}
+
 // MARK: - Speed Tab
 
 struct SpeedView: View {
@@ -106,12 +171,7 @@ struct SpeedView: View {
                 }
                 .padding(.top, 12)
 
-                if location.authorizationStatus == .denied || location.authorizationStatus == .restricted {
-                    Text("Location access is off. Enable it in Settings to see your speed.")
-                        .font(.footnote)
-                        .foregroundStyle(.red)
-                        .padding(.horizontal)
-                }
+                LocationPermissionBanner()
 
                 Spacer()
 
@@ -213,6 +273,8 @@ struct RecordView: View {
             ScrollView {
                 VStack(spacing: 20) {
                     statusHeader
+
+                    LocationPermissionBanner()
 
                     Text(elapsedString(location.recordingElapsed))
                         .font(.system(size: 44, weight: .bold, design: .rounded))
@@ -1038,6 +1100,30 @@ struct SettingsView: View {
         NavigationStack {
             Form {
                 Section {
+                    HStack {
+                        Label("Location Access", systemImage: locationStatusIcon)
+                            .foregroundStyle(locationStatusColor)
+                        Spacer()
+                        Text(locationStatusText)
+                            .foregroundStyle(.secondary)
+                    }
+                    if !location.hasAlwaysPermission {
+                        Button {
+                            Haptics.tap()
+                            if let url = URL(string: UIApplication.openSettingsURLString) {
+                                UIApplication.shared.open(url)
+                            }
+                        } label: {
+                            Label("Fix in iOS Settings", systemImage: "arrow.up.forward.app")
+                        }
+                    }
+                } header: {
+                    Text("Permissions")
+                } footer: {
+                    Text("Recording needs \"Always\" to keep tracking when your screen locks or the app is in your pocket. With \"While Using the App\", GPS stops the moment you lock the phone and your ride will be cut short.")
+                }
+
+                Section {
                     Picker("Vehicle", selection: $settings.vehicleMode) {
                         ForEach(VehicleMode.allCases) { mode in
                             Label(mode.rawValue, systemImage: mode.icon)
@@ -1296,6 +1382,25 @@ struct SettingsView: View {
         } else {
             runStore.clearAllRecordings()
         }
+    }
+
+    private var locationStatusText: String {
+        if location.isLocationDenied { return "Off" }
+        if location.needsAlwaysPermission { return "While Using" }
+        if location.hasAlwaysPermission { return "Always" }
+        return "Not Set"
+    }
+
+    private var locationStatusIcon: String {
+        if location.hasAlwaysPermission { return "checkmark.circle.fill" }
+        if location.isLocationDenied { return "xmark.circle.fill" }
+        return "exclamationmark.triangle.fill"
+    }
+
+    private var locationStatusColor: Color {
+        if location.hasAlwaysPermission { return .green }
+        if location.isLocationDenied { return .red }
+        return .orange
     }
 
     private func previewVoice() {

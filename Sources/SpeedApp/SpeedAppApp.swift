@@ -4,6 +4,7 @@ import UIKit
 
 @main
 struct SpeedAppApp: App {
+    @Environment(\.scenePhase) private var scenePhase
     @StateObject private var locationManager = LocationManager()
     @StateObject private var runStore = RunStore()
     @StateObject private var settings = SettingsStore()
@@ -86,6 +87,13 @@ struct SpeedAppApp: App {
                 .onChange(of: settings.vehicleMode) { _, newMode in
                     locationManager.applyVehicleMode(newMode)
                     navigation.transportType = newMode.transportType
+                }
+                // Coming back from iOS Settings — the rider may have just changed the
+                // location permission, so re-read it rather than showing a stale warning.
+                .onChange(of: scenePhase) { _, phase in
+                    if phase == .active {
+                        locationManager.refreshAuthorizationStatus()
+                    }
                 }
                 .onReceive(locationManager.$currentLocation) { loc in
                     if let loc {

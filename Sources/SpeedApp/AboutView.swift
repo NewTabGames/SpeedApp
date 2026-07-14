@@ -29,6 +29,16 @@ struct AboutView: View {
                 }
 
                 Section {
+                    ForEach(Self.privacyPoints, id: \.self) { point in
+                        Text(point)
+                            .font(.caption)
+                            .padding(.vertical, 1)
+                    }
+                } header: {
+                    Label("Privacy", systemImage: "lock.shield")
+                }
+
+                Section {
                     ForEach(Self.limitations, id: \.self) { note in
                         Text(note)
                             .font(.caption)
@@ -247,6 +257,17 @@ struct AboutView: View {
         ])
     ]
 
+    /// Privacy disclosure. These statements must stay true — if the app's data handling
+    /// ever changes (a server, analytics, any network call), update this first.
+    static let privacyPoints: [String] = [
+        "Your data never leaves your phone. There is no account, no server, no analytics, and no third parties. The app makes no network calls with your data.",
+        "Rides you record are saved on your device so you can view them later. That includes the GPS route, speed, elevation, and any battery levels you logged.",
+        "Location is used while the app is open, and continues in the background only while you are actively recording a ride. iOS shows a blue indicator whenever that is happening.",
+        "Recording never starts on its own. It only runs when you tap Start, and stops when you tap Stop.",
+        "You can delete any ride by swiping it, or erase everything with Clear All Recordings in Settings. Deleting the app removes all of it.",
+        "The map, search, and navigation features send your search terms and route requests to Apple Maps, which is what makes them work. Apple's privacy policy covers that."
+    ]
+
     static let limitations: [String] = [
         "Speed comes from GPS, which updates about once a second. The number on screen is smoothed to look fluid, but that's the real data rate underneath.",
         "Elevation is the noisiest thing GPS measures. Treat those numbers as approximate.",
@@ -255,6 +276,6 @@ struct AboutView: View {
         "Rerouting needs a data connection. Without one, it keeps guiding you along the original route.",
         "Battery range estimates need at least 3 logged rides and get better with more. They assume your riding stays fairly consistent.",
         "Exporting a route map needs an internet connection, since it downloads map tiles.",
-        "Background recording needs Always location permission. If you only grant While Using, recording will pause when the phone locks."
+        "Background recording needs Always location permission. If it's set to \"While Using the App\", GPS stops the moment your screen locks and your ride gets cut short. Check it under Permissions in Settings — the app will warn you if it isn't set correctly."
     ]
 }
