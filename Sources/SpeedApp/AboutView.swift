@@ -78,6 +78,20 @@ struct AboutView: View {
     }
 
     static let sections: [FeatureSection] = [
+        FeatureSection(title: "Vehicles", icon: "car.2.fill", items: [
+            Feature(
+                name: "Four modes",
+                detail: "Switch between Scooter, Car, Motorcycle, and Walking in Settings. Each one keeps its own speed alert, auto-pause, GPS, and smoothing — so tuning one never disturbs another."
+            ),
+            Feature(
+                name: "Mode-aware behavior",
+                detail: "Walking gets footpath routes instead of roads. Battery tracking only appears for the scooter. Auto-pause and alert defaults are sensible for each vehicle."
+            ),
+            Feature(
+                name: "Per-vehicle history",
+                detail: "Every ride is tagged with the vehicle you used. Filter your history by vehicle, and see lifetime totals per vehicle or all together."
+            )
+        ]),
         FeatureSection(title: "Speed", icon: "speedometer", items: [
             Feature(
                 name: "Live speed",

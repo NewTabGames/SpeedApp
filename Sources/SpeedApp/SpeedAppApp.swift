@@ -44,6 +44,8 @@ struct SpeedAppApp: App {
                 .onAppear {
                     locationManager.smoothingAlpha = settings.smoothing.alpha
                     locationManager.applyAccuracyMode(settings.gpsAccuracy)
+                    locationManager.applyVehicleMode(settings.vehicleMode)
+                    navigation.transportType = settings.vehicleMode.transportType
                     locationManager.autoPauseEnabled = settings.autoPauseEnabled
                     locationManager.autoPauseSpeedThreshold = settings.autoPauseSpeedMph
                     locationManager.autoPauseDelay = settings.autoPauseDelaySeconds
@@ -78,6 +80,12 @@ struct SpeedAppApp: App {
                 .onChange(of: navigation.isNavigating) { _, _ in syncScreenAwake() }
                 .onChange(of: settings.hapticsEnabled) { _, newValue in
                     Haptics.enabled = newValue
+                }
+                // Switching vehicle re-tunes GPS filtering and the routing profile, and
+                // swaps in that vehicle's own settings (handled inside SettingsStore).
+                .onChange(of: settings.vehicleMode) { _, newMode in
+                    locationManager.applyVehicleMode(newMode)
+                    navigation.transportType = newMode.transportType
                 }
                 .onReceive(locationManager.$currentLocation) { loc in
                     if let loc {

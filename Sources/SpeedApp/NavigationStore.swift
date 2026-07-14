@@ -42,6 +42,9 @@ final class NavigationStore: NSObject, ObservableObject, MKLocalSearchCompleterD
     var speechRate: Float = 0.5
     /// Chosen voice identifier; resolved to an actual voice at speak time.
     var voiceIdentifier: String = VoiceCatalog.systemDefaultID
+    /// Routing profile for the current vehicle. Walking gets footpath routes; everything
+    /// else uses road routing (MapKit has no scooter or motorcycle profile).
+    var transportType: MKDirectionsTransportType = .automobile
 
     private let completer = MKLocalSearchCompleter()
     private let synthesizer = AVSpeechSynthesizer()
@@ -175,7 +178,7 @@ final class NavigationStore: NSObject, ObservableObject, MKLocalSearchCompleterD
         let request = MKDirections.Request()
         request.source = MKMapItem(placemark: MKPlacemark(coordinate: from))
         request.destination = MKMapItem(placemark: MKPlacemark(coordinate: to))
-        request.transportType = .automobile
+        request.transportType = transportType
 
         MKDirections(request: request).calculate { [weak self] response, _ in
             guard let self else { return }
@@ -335,7 +338,7 @@ final class NavigationStore: NSObject, ObservableObject, MKLocalSearchCompleterD
         let request = MKDirections.Request()
         request.source = MKMapItem(placemark: MKPlacemark(coordinate: from))
         request.destination = MKMapItem(placemark: MKPlacemark(coordinate: to))
-        request.transportType = .automobile
+        request.transportType = transportType
 
         MKDirections(request: request).calculate { [weak self] response, _ in
             guard let self else { return }

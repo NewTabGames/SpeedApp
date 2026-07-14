@@ -1,10 +1,16 @@
 # Epstein's GPS
 
-A GPS speedometer, ride recorder, and turn-by-turn navigator for electric scooters. No paywalls, no subscriptions.
+A GPS speedometer, ride recorder, and turn-by-turn navigator with modes for scooter, car, motorcycle, and walking. No paywalls, no subscriptions.
 
 **Version 2.1** — Requires iOS 18 or newer.
 
 ## Features
+
+### Vehicle modes
+- Switch between Scooter, Car, Motorcycle, and Walking in Settings
+- Each mode keeps its own independent settings (speed alert, auto-pause, GPS, smoothing)
+- Walking uses footpath routing; battery tracking only appears for the scooter
+- Rides are tagged by vehicle; history and lifetime totals can be filtered per vehicle
 
 ### Speed
 - Live MPH/KM-H readout, smoothly interpolated between GPS fixes
@@ -147,6 +153,7 @@ open SpeedApp.xcodeproj
 ## Changelog
 
 **2.1**
+- Vehicle modes: Scooter, Car, Motorcycle, Walking — each with its own independent settings, mode-aware routing, and per-vehicle history and totals
 - Speed-colored routes are now much more distinct (muted-to-vivid, not just light-to-dark)
 - Expanded haptic feedback across tabs, buttons, and controls, unified under one setting
 - Fixed: swiping away the end-of-ride battery sheet silently discarded the ride — it now saves regardless

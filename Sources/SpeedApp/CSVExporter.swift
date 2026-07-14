@@ -26,6 +26,7 @@ enum CSVExporter {
             [
                 "date",
                 "name",
+                "vehicle",
                 "duration_seconds",
                 "distance_\(distUnit)",
                 "max_speed_\(speedUnit)",
@@ -44,6 +45,7 @@ enum CSVExporter {
             let fields: [String] = [
                 isoDate(rec.date),
                 escape(rec.name),
+                rec.mode.rawValue,
                 fmt(rec.duration, places: 0),
                 fmt(unit.convertDistance(fromMiles: rec.distanceMiles), places: 3),
                 fmt(unit.convert(fromMph: rec.maxMph), places: 1),

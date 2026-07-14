@@ -218,7 +218,9 @@ struct RecordView: View {
                         .font(.system(size: 44, weight: .bold, design: .rounded))
                         .monospacedDigit()
 
-                    if settings.batteryTrackingEnabled && !location.isRecording {
+                    if settings.vehicleMode.usesBattery
+                        && settings.batteryTrackingEnabled
+                        && !location.isRecording {
                         batteryStartField
                     }
 
@@ -308,7 +310,8 @@ struct RecordView: View {
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .padding(.horizontal)
         .onAppear {
-            if batteryStartText.isEmpty, let last = runStore.lastKnownBatteryPercent {
+            if batteryStartText.isEmpty,
+               let last = runStore.lastKnownBatteryPercent(for: settings.vehicleMode) {
                 batteryStartText = String(Int(last))
             }
         }
@@ -434,7 +437,7 @@ struct RecordView: View {
         guard let result = location.stopRecording() else { return }
         pendingResult = result
 
-        if settings.batteryTrackingEnabled {
+        if settings.vehicleMode.usesBattery && settings.batteryTrackingEnabled {
             batteryEndText = ""
             showEndBatteryPrompt = true
         } else {
@@ -449,7 +452,12 @@ struct RecordView: View {
         let start = logBattery ? Double(batteryStartText) : nil
         let end = logBattery ? Double(batteryEndText) : nil
 
-        runStore.addRecording(result: result, batteryStart: start, batteryEnd: end)
+        runStore.addRecording(
+            result: result,
+            mode: settings.vehicleMode,
+            batteryStart: start,
+            batteryEnd: end
+        )
         Haptics.success()
 
         pendingResult = nil
@@ -500,6 +508,8 @@ struct HistoryView: View {
     @State private var renameText = ""
     @State private var shareFile: ShareableFile?
     @State private var exportFailed = false
+    /// nil = show every vehicle's rides.
+    @State private var modeFilter: VehicleMode? = nil
 
     var body: some View {
         NavigationStack {
@@ -530,6 +540,17 @@ struct HistoryView: View {
                                     }
                                 }
                                 Divider()
+                                // Only offer vehicles that actually have rides logged.
+                                if runStore.modesWithRides.count > 1 {
+                                    Picker("Vehicle", selection: $modeFilter) {
+                                        Text("All Vehicles").tag(VehicleMode?.none)
+                                        ForEach(runStore.modesWithRides) { mode in
+                                            Label(mode.rawValue, systemImage: mode.icon)
+                                                .tag(VehicleMode?.some(mode))
+                                        }
+                                    }
+                                    Divider()
+                                }
                             }
                             Button {
                                 exportSummaryCSV()
@@ -593,7 +614,7 @@ struct HistoryView: View {
     }
 
     private var visibleRecordings: [SpeedRecording] {
-        runStore.sorted(by: sort, search: searchText)
+        runStore.sorted(by: sort, search: searchText, mode: modeFilter)
     }
 
     private var ridesList: some View {
@@ -643,8 +664,13 @@ struct HistoryView: View {
 
     private func rideRow(_ rec: SpeedRecording) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(rec.displayName)
-                .font(.subheadline.weight(.semibold))
+            HStack(spacing: 6) {
+                Image(systemName: rec.mode.icon)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text(rec.displayName)
+                    .font(.subheadline.weight(.semibold))
+            }
 
             SpeedSparkline(
                 samples: rec.samples,
@@ -679,7 +705,14 @@ struct LifetimeTotalsView: View {
     @EnvironmentObject var runStore: RunStore
     @EnvironmentObject var settings: SettingsStore
 
-    private var totals: LifetimeTotals { runStore.lifetimeTotals }
+    /// nil = totals across every vehicle.
+    @State private var scope: VehicleMode? = nil
+
+    private var totals: LifetimeTotals { runStore.lifetimeTotals(for: scope) }
+
+    private var scopeLabel: String {
+        scope?.rawValue ?? "All Vehicles"
+    }
 
     var body: some View {
         if runStore.recordings.isEmpty {
@@ -690,7 +723,20 @@ struct LifetimeTotalsView: View {
             )
         } else {
             List {
-                Section("All Time") {
+                // Only worth offering a scope picker once there's more than one vehicle logged.
+                if runStore.modesWithRides.count > 1 {
+                    Section {
+                        Picker("Vehicle", selection: $scope) {
+                            Text("All Vehicles").tag(VehicleMode?.none)
+                            ForEach(runStore.modesWithRides) { mode in
+                                Label(mode.rawValue, systemImage: mode.icon)
+                                    .tag(VehicleMode?.some(mode))
+                            }
+                        }
+                    }
+                }
+
+                Section(scopeLabel) {
                     row("Rides", "\(totals.rideCount)")
                     row("Total Distance", String(format: "%.1f %@", settings.unit.convertDistance(fromMiles: totals.totalDistanceMiles), settings.unit.distanceUnitLabel))
                     row("Total Time", elapsedLabel(totals.totalDurationSeconds))
@@ -700,26 +746,56 @@ struct LifetimeTotalsView: View {
                     row("Total Climb", String(format: "%.0f ft", totals.totalElevationGainFt))
                 }
 
-                Section {
-                    batteryContent
-                } header: {
-                    Text("Battery & Range")
-                } footer: {
-                    Text("Estimated from rides where you logged the battery level before and after. More rides make the estimate better.")
+                // Per-vehicle breakdown, only when viewing everything together.
+                if scope == nil && runStore.modesWithRides.count > 1 {
+                    Section("By Vehicle") {
+                        ForEach(runStore.modesWithRides) { mode in
+                            let t = runStore.lifetimeTotals(for: mode)
+                            HStack {
+                                Label(mode.rawValue, systemImage: mode.icon)
+                                    .font(.subheadline)
+                                Spacer()
+                                Text("\(t.rideCount) · \(String(format: "%.1f", settings.unit.convertDistance(fromMiles: t.totalDistanceMiles))) \(settings.unit.distanceUnitLabel)")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                                    .monospacedDigit()
+                            }
+                        }
+                    }
+                }
+
+                // Battery only exists for electric vehicles, so this section only appears
+                // when the scope is one (or when the current vehicle has a battery).
+                if let batteryMode {
+                    Section {
+                        batteryContent(for: batteryMode)
+                    } header: {
+                        Text("\(batteryMode.rawValue) Battery & Range")
+                    } footer: {
+                        Text("Estimated from \(batteryMode.rawValue.lowercased()) rides where you logged the battery level before and after. More rides make the estimate better.")
+                    }
                 }
             }
         }
     }
 
+    /// Which vehicle's battery stats to show, if any. When scoped to a specific vehicle we
+    /// use that; otherwise we fall back to the currently-selected one — but only if it
+    /// actually has a battery.
+    private var batteryMode: VehicleMode? {
+        let candidate = scope ?? settings.vehicleMode
+        return candidate.usesBattery ? candidate : nil
+    }
+
     @ViewBuilder
-    private var batteryContent: some View {
+    private func batteryContent(for mode: VehicleMode) -> some View {
         if !settings.batteryTrackingEnabled {
             Text("Turn on Battery Tracking in Settings to estimate your range.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
-        } else if let perPercent = runStore.milesPerBatteryPercent,
-                  let fullRange = runStore.estimatedFullRangeMiles {
-            row("Rides Logged", "\(runStore.batteryRidesLogged)")
+        } else if let perPercent = runStore.milesPerBatteryPercent(for: mode),
+                  let fullRange = runStore.estimatedFullRangeMiles(for: mode) {
+            row("Rides Logged", "\(runStore.batteryRidesLogged(for: mode))")
             row(
                 "Range per 10%",
                 String(format: "%.1f %@", settings.unit.convertDistance(fromMiles: perPercent * 10), settings.unit.distanceUnitLabel)
@@ -729,7 +805,7 @@ struct LifetimeTotalsView: View {
                 String(format: "%.1f %@", settings.unit.convertDistance(fromMiles: fullRange), settings.unit.distanceUnitLabel)
             )
         } else {
-            let logged = runStore.batteryRidesLogged
+            let logged = runStore.batteryRidesLogged(for: mode)
             let needed = RunStore.minimumRidesForBatteryEstimate - logged
             VStack(alignment: .leading, spacing: 4) {
                 Text("\(logged) of \(RunStore.minimumRidesForBatteryEstimate) rides logged")
@@ -962,6 +1038,19 @@ struct SettingsView: View {
         NavigationStack {
             Form {
                 Section {
+                    Picker("Vehicle", selection: $settings.vehicleMode) {
+                        ForEach(VehicleMode.allCases) { mode in
+                            Label(mode.rawValue, systemImage: mode.icon)
+                                .tag(mode)
+                        }
+                    }
+                } header: {
+                    Text("Vehicle")
+                } footer: {
+                    Text("Each vehicle keeps its own speed alert, auto-pause, GPS, and smoothing settings — changing the car's doesn't affect the scooter's. Walking also uses footpath routes instead of roads.")
+                }
+
+                Section {
                     Button {
                         showAbout = true
                     } label: {
@@ -1031,7 +1120,7 @@ struct SettingsView: View {
                         }
                     }
                 } header: {
-                    Text("Reading Behavior")
+                    Text("\(settings.vehicleMode.rawValue) — Reading Behavior")
                 } footer: {
                     Text("Responsive reacts fastest to speed changes but may jitter. Battery Saver reduces GPS precision to extend battery life on longer rides.")
                 }
@@ -1061,17 +1150,21 @@ struct SettingsView: View {
                         Slider(value: $settings.autoPauseDelaySeconds, in: 2...15, step: 1)
                     }
                 } header: {
-                    Text("Recording")
+                    Text("\(settings.vehicleMode.rawValue) — Recording")
                 } footer: {
                     Text("Automatically pauses the recording once you've been below the set speed for the set time, and resumes when you start moving again. Time spent stopped won't count toward your ride duration, and stops won't drag down your average speed. Turn this off if you want your ride timed door-to-door including every red light.")
                 }
 
-                Section {
-                    Toggle("Battery Tracking", isOn: $settings.batteryTrackingEnabled)
-                } header: {
-                    Text("Battery")
-                } footer: {
-                    Text("Adds an optional battery percentage field before and after each ride. After \(RunStore.minimumRidesForBatteryEstimate) logged rides, the app estimates how far you can go per charge. See it under History → Lifetime.")
+                // Battery tracking only makes sense for electric vehicles. Cars and
+                // motorcycles report their own fuel economy; walking has no energy source.
+                if settings.vehicleMode.usesBattery {
+                    Section {
+                        Toggle("Battery Tracking", isOn: $settings.batteryTrackingEnabled)
+                    } header: {
+                        Text("Battery")
+                    } footer: {
+                        Text("Adds an optional battery percentage field before and after each ride. After \(RunStore.minimumRidesForBatteryEstimate) logged rides, the app estimates how far you can go per charge. See it under History → Lifetime.")
+                    }
                 }
 
                 Section {
@@ -1134,12 +1227,16 @@ struct SettingsView: View {
                         }
                     }
                 } header: {
-                    Text("Safety")
+                    Text("\(settings.vehicleMode.rawValue) — Safety")
                 } footer: {
                     Text("Get a vibration and on-screen alert when you exceed this speed.")
                 }
 
                 Section {
+                    Button("Reset \(settings.vehicleMode.rawValue) Settings", role: .destructive) {
+                        Haptics.warning()
+                        settings.resetCurrentModeSettings()
+                    }
                     Button("Reset Max Speed", role: .destructive) {
                         location.resetMaxSpeed()
                     }

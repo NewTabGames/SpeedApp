@@ -17,6 +17,9 @@ struct SpeedRecording: Identifiable, Codable, Equatable {
     /// Scooter battery percentage at the start/end of the ride, if the rider logged it.
     var batteryStartPercent: Double?
     var batteryEndPercent: Double?
+    /// Which vehicle this was recorded on. Rides saved before vehicle modes existed were
+    /// all scooter rides, so that's the right fallback.
+    var mode: VehicleMode = .scooter
 
     /// Falls back to the date when the rider hasn't given the ride a name.
     var displayName: String {
@@ -79,6 +82,7 @@ final class RunStore: ObservableObject {
 
     func addRecording(
         result: LocationManager.RecordingResult,
+        mode: VehicleMode,
         batteryStart: Double?,
         batteryEnd: Double?
     ) {
@@ -93,7 +97,8 @@ final class RunStore: ObservableObject {
             elevationGainFt: result.elevationGainFt,
             elevationLossFt: result.elevationLossFt,
             batteryStartPercent: batteryStart,
-            batteryEndPercent: batteryEnd
+            batteryEndPercent: batteryEnd,
+            mode: mode
         )
         recordings.insert(recording, at: 0)
         save()
@@ -115,15 +120,19 @@ final class RunStore: ObservableObject {
         save()
     }
 
-    // MARK: - Sorting
+    // MARK: - Sorting / filtering
 
-    func sorted(by sort: RecordingSort, search: String) -> [SpeedRecording] {
-        let filtered: [SpeedRecording]
+    /// `mode: nil` means all vehicles.
+    func sorted(by sort: RecordingSort, search: String, mode: VehicleMode? = nil) -> [SpeedRecording] {
+        var filtered = recordings
+
+        if let mode {
+            filtered = filtered.filter { $0.mode == mode }
+        }
+
         let query = search.trimmingCharacters(in: .whitespaces).lowercased()
-        if query.isEmpty {
-            filtered = recordings
-        } else {
-            filtered = recordings.filter { $0.displayName.lowercased().contains(query) }
+        if !query.isEmpty {
+            filtered = filtered.filter { $0.displayName.lowercased().contains(query) }
         }
 
         switch sort {
@@ -135,13 +144,27 @@ final class RunStore: ObservableObject {
         }
     }
 
+    func recordings(for mode: VehicleMode) -> [SpeedRecording] {
+        recordings.filter { $0.mode == mode }
+    }
+
+    /// Which vehicles actually have rides logged — used to only show relevant tabs/filters.
+    var modesWithRides: [VehicleMode] {
+        VehicleMode.allCases.filter { mode in
+            recordings.contains { $0.mode == mode }
+        }
+    }
+
     // MARK: - Lifetime totals
 
-    var lifetimeTotals: LifetimeTotals {
-        var totals = LifetimeTotals()
-        totals.rideCount = recordings.count
+    /// `mode: nil` totals every vehicle together.
+    func lifetimeTotals(for mode: VehicleMode? = nil) -> LifetimeTotals {
+        let rides = mode.map { m in recordings.filter { $0.mode == m } } ?? recordings
 
-        for rec in recordings {
+        var totals = LifetimeTotals()
+        totals.rideCount = rides.count
+
+        for rec in rides {
             totals.totalDistanceMiles += rec.distanceMiles
             totals.totalDurationSeconds += rec.duration
             totals.totalElevationGainFt += rec.elevationGainFt
@@ -162,22 +185,24 @@ final class RunStore: ObservableObject {
     /// One ride is far too noisy to extrapolate from.
     static let minimumRidesForBatteryEstimate = 3
 
-    /// Rides where the rider logged both a start and end battery percentage
-    /// and actually covered meaningful ground.
-    private var batteryLoggedRides: [SpeedRecording] {
+    /// Battery-logged rides for a given vehicle. Scoped by mode because pooling a scooter's
+    /// miles-per-percent with anything else would produce a meaningless number.
+    private func batteryLoggedRides(for mode: VehicleMode) -> [SpeedRecording] {
         recordings.filter { rec in
-            guard let used = rec.batteryUsedPercent else { return false }
+            guard rec.mode == mode, let used = rec.batteryUsedPercent else { return false }
             return used > 0 && rec.distanceMiles > 0.2
         }
     }
 
-    var batteryRidesLogged: Int { batteryLoggedRides.count }
+    func batteryRidesLogged(for mode: VehicleMode) -> Int {
+        batteryLoggedRides(for: mode).count
+    }
 
-    /// Average miles travelled per 1% of battery, pooled across all logged rides.
-    /// Pooling totals (rather than averaging each ride's ratio) means longer rides
-    /// carry more weight, which is what you want — they're better data.
-    var milesPerBatteryPercent: Double? {
-        let rides = batteryLoggedRides
+    /// Average miles travelled per 1% of battery, pooled across that vehicle's logged rides.
+    /// Pooling totals (rather than averaging each ride's ratio) means longer rides carry more
+    /// weight, which is what you want — they're better data.
+    func milesPerBatteryPercent(for mode: VehicleMode) -> Double? {
+        let rides = batteryLoggedRides(for: mode)
         guard rides.count >= Self.minimumRidesForBatteryEstimate else { return nil }
 
         let totalMiles = rides.reduce(0.0) { $0 + $1.distanceMiles }
@@ -186,21 +211,16 @@ final class RunStore: ObservableObject {
         return totalMiles / totalPercent
     }
 
-    /// Estimated miles left at a given battery level, based on your riding history.
-    func estimatedRangeMiles(atBatteryPercent percent: Double) -> Double? {
-        guard let perPercent = milesPerBatteryPercent else { return nil }
-        return perPercent * max(percent, 0)
+    /// Full-charge range implied by that vehicle's history.
+    func estimatedFullRangeMiles(for mode: VehicleMode) -> Double? {
+        guard let perPercent = milesPerBatteryPercent(for: mode) else { return nil }
+        return perPercent * 100
     }
 
-    /// Full-charge range implied by your history.
-    var estimatedFullRangeMiles: Double? {
-        estimatedRangeMiles(atBatteryPercent: 100)
-    }
-
-    /// Battery percentage entered at the end of the most recent logged ride —
+    /// Battery percentage entered at the end of the most recent logged ride on this vehicle —
     /// a sensible default for the next ride's starting value.
-    var lastKnownBatteryPercent: Double? {
-        recordings.first(where: { $0.batteryEndPercent != nil })?.batteryEndPercent
+    func lastKnownBatteryPercent(for mode: VehicleMode) -> Double? {
+        recordings.first(where: { $0.mode == mode && $0.batteryEndPercent != nil })?.batteryEndPercent
     }
 
     // MARK: - Persistence

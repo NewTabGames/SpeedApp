@@ -129,6 +129,12 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
         maxSpeedMph = 0
     }
 
+    /// Tells CoreLocation what kind of movement to expect. Walking and driving have very
+    /// different motion profiles, and this tunes its internal filtering accordingly.
+    func applyVehicleMode(_ mode: VehicleMode) {
+        manager.activityType = mode.activityType
+    }
+
     /// Battery saver trades some precision/update frequency for meaningfully less power draw.
     func applyAccuracyMode(_ mode: GPSAccuracyMode) {
         switch mode {
