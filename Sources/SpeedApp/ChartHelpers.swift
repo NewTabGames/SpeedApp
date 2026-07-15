@@ -118,10 +118,13 @@ struct InteractiveSpeedChart: View {
                     }
                 }
                 .transition(.opacity)
-            } else if showAxes {
+            } else if showAxes && samples.count >= 2 {
+                // Only worth prompting once there's an actual line to drag across — a
+                // just-started recording has too few points to inspect.
                 Text("Drag across the graph to inspect a point")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .center)
             }
 
             Chart(displaySamples) { sample in

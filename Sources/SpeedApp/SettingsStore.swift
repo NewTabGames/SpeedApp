@@ -224,7 +224,7 @@ enum MapStyleOption: String, CaseIterable, Codable, Identifiable {
 ///
 /// Each mode keeps its own independent settings (speed alert, auto-pause, GPS mode,
 /// smoothing), so tuning the car doesn't disturb the scooter.
-enum VehicleMode: String, CaseIterable, Codable, Identifiable, Equatable {
+enum VehicleMode: String, CaseIterable, Codable, Identifiable, Equatable, Sendable {
     case scooter = "Scooter"
     case car = "Car"
     case motorcycle = "Motorcycle"

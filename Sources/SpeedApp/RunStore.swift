@@ -1,7 +1,7 @@
 import Foundation
 import Combine
 
-struct SpeedRecording: Identifiable, Codable, Equatable {
+struct SpeedRecording: Identifiable, Codable, Equatable, Sendable {
     var id: UUID = UUID()
     var date: Date
     var duration: Double

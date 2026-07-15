@@ -9,6 +9,7 @@ struct SpeedAppApp: App {
     @StateObject private var runStore = RunStore()
     @StateObject private var settings = SettingsStore()
     @StateObject private var navigation = NavigationStore()
+    @StateObject private var heatmapStore = HeatmapStore()
 
     init() {
         // Deliberately does NOT activate the audio session here.
@@ -40,6 +41,7 @@ struct SpeedAppApp: App {
                 .environmentObject(runStore)
                 .environmentObject(settings)
                 .environmentObject(navigation)
+                .environmentObject(heatmapStore)
                 .preferredColorScheme(settings.appearance.colorScheme)
                 .tint(settings.accent.color)
                 .onAppear {

@@ -259,6 +259,7 @@ struct RecordView: View {
     @EnvironmentObject var location: LocationManager
     @EnvironmentObject var runStore: RunStore
     @EnvironmentObject var settings: SettingsStore
+    @EnvironmentObject var heatmapStore: HeatmapStore
 
     @State private var batteryStartText: String = ""
     @State private var showEndBatteryPrompt = false
@@ -539,6 +540,9 @@ struct RecordView: View {
         guard let saved else { return }
         Haptics.success()
 
+        // Regenerate the heatmap now that there's a new ride. Runs off the main thread.
+        heatmapStore.rebuild(from: runStore.recordings)
+
         let broken = runStore.recordsBroken(by: saved)
         guard !broken.isEmpty else { return }
 
@@ -584,6 +588,7 @@ struct RecordView: View {
 struct HistoryView: View {
     @EnvironmentObject var runStore: RunStore
     @EnvironmentObject var settings: SettingsStore
+    @EnvironmentObject var heatmapStore: HeatmapStore
 
     @State private var section = 0
     @State private var sort: RecordingSort = .newest
@@ -639,23 +644,56 @@ struct HistoryView: View {
                     if !runStore.recordings.isEmpty {
                         Menu {
                             if section == 0 {
-                                Picker("Sort", selection: $sort) {
+                                // Nested menus with explicit buttons rather than inline
+                                // Pickers. A Picker placed directly inside a Menu — especially
+                                // one with an optional selection — makes the menu re-render on
+                                // a loop, which shows up as the whole menu visibly pulsing.
+                                Menu {
                                     ForEach(RecordingSort.allCases) { option in
-                                        Text(option.rawValue).tag(option)
+                                        Button {
+                                            sort = option
+                                        } label: {
+                                            if sort == option {
+                                                Label(option.rawValue, systemImage: "checkmark")
+                                            } else {
+                                                Text(option.rawValue)
+                                            }
+                                        }
+                                    }
+                                } label: {
+                                    Label("Sort: \(sort.rawValue)", systemImage: "arrow.up.arrow.down")
+                                }
+
+                                if runStore.modesWithRides.count > 1 {
+                                    Menu {
+                                        Button {
+                                            modeFilter = nil
+                                        } label: {
+                                            if modeFilter == nil {
+                                                Label("All Vehicles", systemImage: "checkmark")
+                                            } else {
+                                                Text("All Vehicles")
+                                            }
+                                        }
+                                        ForEach(runStore.modesWithRides) { mode in
+                                            Button {
+                                                modeFilter = mode
+                                            } label: {
+                                                if modeFilter == mode {
+                                                    Label(mode.rawValue, systemImage: "checkmark")
+                                                } else {
+                                                    Label(mode.rawValue, systemImage: mode.icon)
+                                                }
+                                            }
+                                        }
+                                    } label: {
+                                        Label(
+                                            "Vehicle: \(modeFilter?.rawValue ?? "All")",
+                                            systemImage: "car.2"
+                                        )
                                     }
                                 }
                                 Divider()
-                                // Only offer vehicles that actually have rides logged.
-                                if runStore.modesWithRides.count > 1 {
-                                    Picker("Vehicle", selection: $modeFilter) {
-                                        Text("All Vehicles").tag(VehicleMode?.none)
-                                        ForEach(runStore.modesWithRides) { mode in
-                                            Label(mode.rawValue, systemImage: mode.icon)
-                                                .tag(VehicleMode?.some(mode))
-                                        }
-                                    }
-                                    Divider()
-                                }
                             }
                             Button {
                                 exportSummaryCSV()
@@ -677,6 +715,7 @@ struct HistoryView: View {
             Button("Clear All", role: .destructive) {
                 Haptics.warning()
                 runStore.clearAllRecordings()
+                heatmapStore.clear()
             }
         } message: {
             Text("Are you sure you want to clear your history? This will permanently delete all \(runStore.recordings.count) saved recordings and can't be undone.")
@@ -733,6 +772,7 @@ struct HistoryView: View {
                         Button(role: .destructive) {
                             Haptics.warning()
                             runStore.delete(id: rec.id)
+                            heatmapStore.rebuild(from: runStore.recordings)
                         } label: {
                             Label("Delete", systemImage: "trash")
                         }
@@ -1128,6 +1168,7 @@ struct SettingsView: View {
     @EnvironmentObject var settings: SettingsStore
     @EnvironmentObject var runStore: RunStore
     @EnvironmentObject var location: LocationManager
+    @EnvironmentObject var heatmapStore: HeatmapStore
 
     @State private var alertSpeedText: String = ""
     @State private var showClearConfirmation = false
@@ -1456,6 +1497,7 @@ struct SettingsView: View {
             Button("Clear All", role: .destructive) {
                 Haptics.warning()
                 runStore.clearAllRecordings()
+                heatmapStore.clear()
             }
         } message: {
             Text("Are you sure you want to clear your history? This will permanently delete all \(runStore.recordings.count) saved recordings and can't be undone.")
@@ -1490,6 +1532,9 @@ struct SettingsView: View {
                 let backup = try BackupManager.readBackup(from: url)
                 let outcome = runStore.merge(backup.recordings)
                 Haptics.success()
+                if outcome.added > 0 {
+                    heatmapStore.rebuild(from: runStore.recordings)
+                }
 
                 if outcome.added == 0 {
                     backupMessage = "Those \(outcome.skipped) rides are already in your history — nothing to add."

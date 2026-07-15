@@ -6,7 +6,7 @@ import QuartzCore
 /// One GPS reading during a recording.
 /// `offsetSeconds` is unique within a recording, so it doubles as the identity —
 /// no need to store a UUID per sample (at 1 sample/sec that adds up fast).
-struct SpeedSample: Codable, Identifiable, Equatable {
+struct SpeedSample: Codable, Identifiable, Equatable, Sendable {
     let offsetSeconds: Double
     let mph: Double
     let latitude: Double

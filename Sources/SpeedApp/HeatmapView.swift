@@ -1,139 +1,178 @@
 import SwiftUI
 import MapKit
 
-/// Every route you've ever recorded, drawn on one map.
+/// Shows the density heatmap — the blue→red field where colour reflects how often you've
+/// ridden somewhere.
 ///
-/// Each ride is a translucent line. Where routes overlap, the translucency stacks and the
-/// path gets brighter — so the roads you ride most often glow, and one-off trips stay faint.
-/// That's the whole trick: no density grid, just alpha compositing doing the work.
+/// The image itself is generated when a ride finishes (see HeatmapStore), not here, so this
+/// view just lays the cached image over a map. Opening it is instant and there's no rendering
+/// cost while it's on screen.
 struct HeatmapView: View {
-    @EnvironmentObject var runStore: RunStore
     @EnvironmentObject var settings: SettingsStore
-
-    /// nil = every vehicle.
-    @State private var modeFilter: VehicleMode? = nil
-    @State private var cameraPosition: MapCameraPosition = .automatic
-
-    private var rides: [SpeedRecording] {
-        let all = modeFilter.map { m in runStore.recordings.filter { $0.mode == m } }
-            ?? runStore.recordings
-        return all.filter { $0.samples.count > 1 }
-    }
+    @EnvironmentObject var heatmapStore: HeatmapStore
 
     var body: some View {
         Group {
-            if rides.isEmpty {
+            if let heatmap = heatmapStore.heatmap {
+                ZStack(alignment: .bottom) {
+                    HeatmapMap(
+                        image: heatmap.image,
+                        region: heatmap.region,
+                        mapStyle: settings.mapStyle
+                    )
+                    .ignoresSafeArea(edges: .bottom)
+
+                    legend
+                }
+            } else if heatmapStore.isRendering {
+                ProgressView("Building heatmap…")
+            } else {
                 ContentUnavailableView(
                     "No Routes Yet",
-                    systemImage: "map",
-                    description: Text("Record a few rides and they'll all show up here together.")
+                    systemImage: "flame",
+                    description: Text("Record a few rides and they'll build into a heatmap here.")
                 )
-            } else {
-                mapContent
             }
         }
         .navigationTitle("Heatmap")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                if runStore.modesWithRides.count > 1 {
-                    Menu {
-                        Picker("Vehicle", selection: $modeFilter) {
-                            Text("All Vehicles").tag(VehicleMode?.none)
-                            ForEach(runStore.modesWithRides) { mode in
-                                Label(mode.rawValue, systemImage: mode.icon)
-                                    .tag(VehicleMode?.some(mode))
-                            }
-                        }
-                    } label: {
-                        Image(systemName: "line.3.horizontal.decrease.circle")
-                    }
-                }
-            }
-        }
-        .onAppear { fitToAllRides() }
-        .onChange(of: modeFilter) { _, _ in fitToAllRides() }
     }
 
-    private var mapContent: some View {
-        ZStack(alignment: .bottom) {
-            Map(position: $cameraPosition) {
-                ForEach(rides) { ride in
-                    MapPolyline(coordinates: coordinates(for: ride))
-                        // Low alpha per ride so overlaps accumulate into brighter lines.
-                        // Wide, round caps make the buildup read as a glow rather than
-                        // a tangle of hairlines.
-                        .stroke(
-                            settings.accent.color.opacity(0.35),
-                            style: StrokeStyle(lineWidth: 6, lineCap: .round, lineJoin: .round)
-                        )
-                }
-            }
-            .mapStyle(settings.mapStyle.mapStyle)
-            .ignoresSafeArea(edges: .bottom)
-
-            summaryBar
-        }
-    }
-
-    private var summaryBar: some View {
-        HStack(spacing: 16) {
-            stat("\(rides.count)", "routes")
-            stat(
-                String(format: "%.0f", settings.unit.convertDistance(
-                    fromMiles: rides.reduce(0) { $0 + $1.distanceMiles }
-                )),
-                settings.unit.distanceUnitLabel
+    private var legend: some View {
+        HStack(spacing: 10) {
+            Text("Less").font(.caption2).foregroundStyle(.secondary)
+            LinearGradient(
+                colors: [
+                    Color(red: 0.0, green: 0.1, blue: 0.5),
+                    Color(red: 0.0, green: 0.6, blue: 1.0),
+                    Color(red: 0.2, green: 0.9, blue: 0.3),
+                    Color(red: 1.0, green: 0.85, blue: 0.0),
+                    Color(red: 0.9, green: 0.1, blue: 0.05)
+                ],
+                startPoint: .leading, endPoint: .trailing
             )
-            if let mode = modeFilter {
-                Label(mode.rawValue, systemImage: mode.icon)
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(.secondary)
-            }
+            .frame(width: 120, height: 8)
+            .clipShape(Capsule())
+            Text("More").font(.caption2).foregroundStyle(.secondary)
         }
-        .padding(.horizontal, 18)
+        .padding(.horizontal, 16)
         .padding(.vertical, 10)
         .background(.ultraThinMaterial)
         .clipShape(Capsule())
         .shadow(radius: 4)
         .padding(.bottom, 20)
     }
+}
 
-    private func stat(_ value: String, _ label: String) -> some View {
-        HStack(spacing: 4) {
-            Text(value)
-                .font(.subheadline.weight(.bold))
-                .monospacedDigit()
-            Text(label)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+/// Wraps MKMapView so a pre-rendered heatmap image can be laid over a fixed geographic
+/// rectangle with a proper overlay renderer — SwiftUI's Map has no image-overlay support.
+private struct HeatmapMap: UIViewRepresentable {
+    let image: UIImage
+    let region: MKCoordinateRegion
+    let mapStyle: MapStyleOption
+
+    func makeUIView(context: Context) -> MKMapView {
+        let map = MKMapView()
+        map.delegate = context.coordinator
+        map.setRegion(paddedRegion, animated: false)
+        applyStyle(to: map)
+        addOverlay(to: map)
+        return map
+    }
+
+    func updateUIView(_ map: MKMapView, context: Context) {
+        applyStyle(to: map)
+        // Replace the overlay if the image changed.
+        map.removeOverlays(map.overlays)
+        addOverlay(to: map)
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    private var paddedRegion: MKCoordinateRegion {
+        MKCoordinateRegion(
+            center: region.center,
+            span: MKCoordinateSpan(
+                latitudeDelta: region.span.latitudeDelta * 1.25,
+                longitudeDelta: region.span.longitudeDelta * 1.25
+            )
+        )
+    }
+
+    private func applyStyle(to map: MKMapView) {
+        switch mapStyle {
+        case .standard: map.preferredConfiguration = MKStandardMapConfiguration()
+        case .hybrid:   map.preferredConfiguration = MKHybridMapConfiguration()
+        case .satellite: map.preferredConfiguration = MKImageryMapConfiguration()
         }
     }
 
-    private func coordinates(for ride: SpeedRecording) -> [CLLocationCoordinate2D] {
-        // Downsampled: a heatmap of many rides could otherwise be tens of thousands of
-        // points, and at this zoom the detail is invisible anyway.
-        downsampled(ride.samples, maxPoints: 150).map {
-            CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude)
-        }
+    private func addOverlay(to map: MKMapView) {
+        let overlay = HeatmapOverlay(image: image, region: region)
+        map.addOverlay(overlay)
     }
 
-    /// Frames the camera so every route is visible at once.
-    private func fitToAllRides() {
-        let allCoords = rides.flatMap { coordinates(for: $0) }
-        guard !allCoords.isEmpty else { return }
+    final class Coordinator: NSObject, MKMapViewDelegate {
+        func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
+            guard let heat = overlay as? HeatmapOverlay else {
+                return MKOverlayRenderer(overlay: overlay)
+            }
+            return HeatmapOverlayRenderer(overlay: heat)
+        }
+    }
+}
 
-        let lats = allCoords.map(\.latitude)
-        let lons = allCoords.map(\.longitude)
+/// An overlay covering the heatmap's geographic rectangle.
+private final class HeatmapOverlay: NSObject, MKOverlay {
+    let image: UIImage
+    let coordinate: CLLocationCoordinate2D
+    let boundingMapRect: MKMapRect
 
-        let center = CLLocationCoordinate2D(
-            latitude: (lats.min()! + lats.max()!) / 2,
-            longitude: (lons.min()! + lons.max()!) / 2
+    init(image: UIImage, region: MKCoordinateRegion) {
+        self.image = image
+        self.coordinate = region.center
+
+        // Convert the region's corners to map points to get the covering rect.
+        let topLeft = CLLocationCoordinate2D(
+            latitude: region.center.latitude + region.span.latitudeDelta / 2,
+            longitude: region.center.longitude - region.span.longitudeDelta / 2
         )
-        let span = MKCoordinateSpan(
-            latitudeDelta: max((lats.max()! - lats.min()!) * 1.3, 0.01),
-            longitudeDelta: max((lons.max()! - lons.min()!) * 1.3, 0.01)
+        let bottomRight = CLLocationCoordinate2D(
+            latitude: region.center.latitude - region.span.latitudeDelta / 2,
+            longitude: region.center.longitude + region.span.longitudeDelta / 2
         )
-        cameraPosition = .region(MKCoordinateRegion(center: center, span: span))
+        let tlPoint = MKMapPoint(topLeft)
+        let brPoint = MKMapPoint(bottomRight)
+        self.boundingMapRect = MKMapRect(
+            x: tlPoint.x,
+            y: tlPoint.y,
+            width: brPoint.x - tlPoint.x,
+            height: brPoint.y - tlPoint.y
+        )
+    }
+}
+
+/// Draws the heatmap image stretched across the overlay's rectangle.
+private final class HeatmapOverlayRenderer: MKOverlayRenderer {
+    private let image: UIImage
+
+    init(overlay: HeatmapOverlay) {
+        self.image = overlay.image
+        super.init(overlay: overlay)
+    }
+
+    override func draw(_ mapRect: MKMapRect, zoomScale: MKZoomScale, in context: CGContext) {
+        guard let cgImage = image.cgImage else { return }
+        let rect = self.rect(for: overlay.boundingMapRect)
+
+        // The image's row 0 is north; Core Graphics draws bottom-up, so flip vertically to
+        // keep north at the top.
+        context.saveGState()
+        context.translateBy(x: 0, y: rect.maxY)
+        context.scaleBy(x: 1, y: -1)
+        let drawRect = CGRect(x: rect.minX, y: 0, width: rect.width, height: rect.height)
+        context.setAlpha(0.75)
+        context.draw(cgImage, in: drawRect)
+        context.restoreGState()
     }
 }
