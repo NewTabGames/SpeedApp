@@ -137,7 +137,7 @@ struct MapTabView: View {
                             Haptics.tap()
                             showHeatmap = true
                         } label: {
-                            Image(systemName: "map.fill")
+                            Image(systemName: "flame.fill")
                                 .font(.title3)
                                 .foregroundStyle(settings.accent.color)
                                 .frame(width: 48, height: 48)
