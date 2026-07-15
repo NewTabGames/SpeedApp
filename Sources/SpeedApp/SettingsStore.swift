@@ -93,38 +93,74 @@ enum AccentTheme: String, CaseIterable, Codable, Identifiable {
         return UIColor(red: r, green: g, blue: b, alpha: 1)
     }
 
-    /// Maps a normalized speed (0 = slowest point of the ride, 1 = fastest) to a color.
+    /// Maps a normalized speed (0 = slowest, 1 = fastest) to a color.
     ///
-    /// The old version only varied lightness (pale accent → dark accent), which was hard to
-    /// read: lightness is the weakest visual channel, and a *darkened* fast end disappeared
-    /// against dark satellite imagery. This varies saturation and brightness together —
-    /// slow is desaturated and muted (reads almost gray), fast is fully saturated and bright.
-    /// That's two channels moving at once, so the difference is obvious at a glance.
+    /// Built in HSB rather than by scaling RGB channels. The previous version pushed
+    /// brightness to 1.15 and then clamped each channel to 1.0 — which meant everything above
+    /// roughly 80% of the range clipped to the *same* colour. On a fast car ride, where much
+    /// of the route sits in that upper band, the whole line came out one flat shade.
+    ///
+    /// Here saturation and brightness both ramp within legal bounds, so every point on the
+    /// scale is a distinct colour: dark and grey when slow, vivid and bright when fast.
     private func shadeComponents(_ t: Double) -> (Double, Double, Double) {
         let clamped = max(0, min(1, t))
+        let (h, baseSat, _) = hsb
+
+        // Wide, non-clipping spread. Both channels move together so the difference reads
+        // clearly even on satellite imagery.
+        let saturation = lerp(0.10, max(baseSat, 0.85), clamped)  // grey → full colour
+        let brightness = lerp(0.42, 1.00, clamped)                // dark → bright
+
+        return hsbToRGB(h: h, s: saturation, b: brightness)
+    }
+
+    private func lerp(_ from: Double, _ to: Double, _ t: Double) -> Double {
+        from + (to - from) * t
+    }
+
+    /// The accent expressed as hue/saturation/brightness.
+    private var hsb: (Double, Double, Double) {
         let (r, g, b) = rgb
+        let maxC = max(r, g, b)
+        let minC = min(r, g, b)
+        let delta = maxC - minC
 
-        // Perceived luminance of the accent, used as its gray equivalent.
-        let gray = 0.299 * r + 0.587 * g + 0.114 * b
-
-        // Slow end: heavily desaturated toward gray, and darkened a little.
-        let slowSaturation = 0.15   // almost no color
-        let slowBrightness = 0.55   // muted
-
-        // Fast end: fully saturated, pushed brighter than the base accent so it pops.
-        let fastSaturation = 1.0
-        let fastBrightness = 1.15
-
-        let saturation = slowSaturation + (fastSaturation - slowSaturation) * clamped
-        let brightness = slowBrightness + (fastBrightness - slowBrightness) * clamped
-
-        // Mix between gray and the accent hue by saturation, then scale by brightness.
-        func channel(_ c: Double) -> Double {
-            let mixed = gray + (c - gray) * saturation
-            return max(0, min(1, mixed * brightness))
+        var hue: Double = 0
+        if delta > 0 {
+            if maxC == r {
+                hue = ((g - b) / delta).truncatingRemainder(dividingBy: 6)
+            } else if maxC == g {
+                hue = (b - r) / delta + 2
+            } else {
+                hue = (r - g) / delta + 4
+            }
+            hue /= 6
+            if hue < 0 { hue += 1 }
         }
 
-        return (channel(r), channel(g), channel(b))
+        let saturation = maxC == 0 ? 0 : delta / maxC
+        return (hue, saturation, maxC)
+    }
+
+    private func hsbToRGB(h: Double, s: Double, b: Double) -> (Double, Double, Double) {
+        guard s > 0 else { return (b, b, b) }
+
+        let sector = (h.truncatingRemainder(dividingBy: 1)) * 6
+        let i = floor(sector)
+        let f = sector - i
+
+        let p = b * (1 - s)
+        let q = b * (1 - s * f)
+        let t = b * (1 - s * (1 - f))
+
+        switch Int(i) % 6 {
+        case 0:  return (b, t, p)
+        case 1:  return (q, b, p)
+        case 2:  return (p, b, t)
+        case 3:  return (p, q, b)
+        case 4:  return (t, p, b)
+        default: return (b, p, q)
+        }
     }
 }
 

@@ -17,13 +17,12 @@ struct RouteMap: View {
         recording.samples.map { CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude) }
     }
 
-    /// Speed range across this ride, used to normalize each segment to 0...1.
-    /// Falls back to a tiny range if every sample is identical, to avoid divide-by-zero.
-    private var speedRange: (min: Double, max: Double) {
-        let speeds = recording.samples.map(\.mph)
-        let lo = speeds.min() ?? 0
-        let hi = speeds.max() ?? 1
-        return hi - lo < 0.1 ? (lo, lo + 0.1) : (lo, hi)
+    /// Ranks each speed against the rest of the ride rather than stretching linearly between
+    /// the slowest and fastest point — see SpeedScale for why that matters on a fast drive.
+    /// Built from the full sample set, so the ranking is exact even though the drawn line is
+    /// downsampled.
+    private var speedScale: SpeedScale {
+        SpeedScale(samples: recording.samples)
     }
 
     var body: some View {
@@ -68,7 +67,7 @@ struct RouteMap: View {
         let samples = downsampled(recording.samples, maxPoints: 240)
         guard samples.count > 1 else { return [] }
 
-        let range = speedRange
+        let scale = speedScale
         var segments: [Segment] = []
         segments.reserveCapacity(samples.count - 1)
 
@@ -76,7 +75,7 @@ struct RouteMap: View {
             let a = samples[i]
             let b = samples[i + 1]
             let avgSpeed = (a.mph + b.mph) / 2
-            let t = (avgSpeed - range.min) / (range.max - range.min)
+            let t = scale.normalized(avgSpeed)
 
             segments.append(Segment(
                 id: i,

@@ -34,6 +34,76 @@ struct SpeedRecording: Identifiable, Codable, Equatable {
     static func == (lhs: SpeedRecording, rhs: SpeedRecording) -> Bool {
         lhs.id == rhs.id && lhs.name == rhs.name
     }
+
+    // MARK: - Decoding
+    //
+    // Written by hand rather than synthesized, because Swift's generated Decodable calls
+    // decode(_:forKey:) for non-optional properties, which THROWS when a key is absent —
+    // it does not fall back to the property's default value. Fields added over time (name,
+    // elevation, mode) are missing from older saved rides, so the synthesized version would
+    // fail on them. RunStore.load() swallows decode errors with `try?`, meaning that failure
+    // would silently present as "all your history is gone".
+    //
+    // decodeIfPresent gives every added field a safe fallback, so old rides keep loading.
+
+    enum CodingKeys: String, CodingKey {
+        case id, date, duration, maxMph, avgMph, distanceMiles, samples
+        case name, elevationGainFt, elevationLossFt
+        case batteryStartPercent, batteryEndPercent, mode
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+
+        // Core fields — present in every version, so a genuine failure here is a real error.
+        id = try c.decode(UUID.self, forKey: .id)
+        date = try c.decode(Date.self, forKey: .date)
+        duration = try c.decode(Double.self, forKey: .duration)
+        maxMph = try c.decode(Double.self, forKey: .maxMph)
+        avgMph = try c.decode(Double.self, forKey: .avgMph)
+        distanceMiles = try c.decode(Double.self, forKey: .distanceMiles)
+        samples = try c.decode([SpeedSample].self, forKey: .samples)
+
+        // Added later — tolerate their absence.
+        name = try c.decodeIfPresent(String.self, forKey: .name) ?? ""
+        elevationGainFt = try c.decodeIfPresent(Double.self, forKey: .elevationGainFt) ?? 0
+        elevationLossFt = try c.decodeIfPresent(Double.self, forKey: .elevationLossFt) ?? 0
+        batteryStartPercent = try c.decodeIfPresent(Double.self, forKey: .batteryStartPercent)
+        batteryEndPercent = try c.decodeIfPresent(Double.self, forKey: .batteryEndPercent)
+        // Rides predating vehicle modes were all scooter rides.
+        mode = try c.decodeIfPresent(VehicleMode.self, forKey: .mode) ?? .scooter
+    }
+
+    /// Memberwise init, which the custom `init(from:)` above would otherwise suppress.
+    init(
+        id: UUID = UUID(),
+        date: Date,
+        duration: Double,
+        maxMph: Double,
+        avgMph: Double,
+        distanceMiles: Double,
+        samples: [SpeedSample],
+        name: String = "",
+        elevationGainFt: Double = 0,
+        elevationLossFt: Double = 0,
+        batteryStartPercent: Double? = nil,
+        batteryEndPercent: Double? = nil,
+        mode: VehicleMode = .scooter
+    ) {
+        self.id = id
+        self.date = date
+        self.duration = duration
+        self.maxMph = maxMph
+        self.avgMph = avgMph
+        self.distanceMiles = distanceMiles
+        self.samples = samples
+        self.name = name
+        self.elevationGainFt = elevationGainFt
+        self.elevationLossFt = elevationLossFt
+        self.batteryStartPercent = batteryStartPercent
+        self.batteryEndPercent = batteryEndPercent
+        self.mode = mode
+    }
 }
 
 /// Aggregate stats across every saved ride.
@@ -80,13 +150,16 @@ final class RunStore: ObservableObject {
 
     // MARK: - Mutations
 
+    /// Returns the saved ride, or nil if it was too short to keep. Callers need to know the
+    /// difference — assuming `recordings.first` is the new ride is wrong when nothing was saved.
+    @discardableResult
     func addRecording(
         result: LocationManager.RecordingResult,
         mode: VehicleMode,
         batteryStart: Double?,
         batteryEnd: Double?
-    ) {
-        guard result.duration > 2 else { return } // skip accidental taps
+    ) -> SpeedRecording? {
+        guard result.duration > 2 else { return nil } // skip accidental taps
         let recording = SpeedRecording(
             date: Date(),
             duration: result.duration,
@@ -102,6 +175,7 @@ final class RunStore: ObservableObject {
         )
         recordings.insert(recording, at: 0)
         save()
+        return recording
     }
 
     func rename(id: UUID, to newName: String) {
@@ -117,6 +191,34 @@ final class RunStore: ObservableObject {
 
     func clearAllRecordings() {
         recordings.removeAll()
+        save()
+    }
+
+    // MARK: - Backup restore
+
+    /// Result of restoring a backup, so the UI can report what actually happened.
+    struct RestoreResult {
+        var added: Int
+        var skipped: Int   // already present
+    }
+
+    /// Merges a backup into the existing rides. Rides carry stable UUIDs, so re-importing
+    /// the same backup twice adds nothing the second time — no duplicates.
+    @discardableResult
+    func merge(_ incoming: [SpeedRecording]) -> RestoreResult {
+        let existingIDs = Set(recordings.map(\.id))
+        let new = incoming.filter { !existingIDs.contains($0.id) }
+
+        recordings.append(contentsOf: new)
+        recordings.sort { $0.date > $1.date }
+        save()
+
+        return RestoreResult(added: new.count, skipped: incoming.count - new.count)
+    }
+
+    /// Throws away everything currently stored and uses the backup instead.
+    func replaceAll(with incoming: [SpeedRecording]) {
+        recordings = incoming.sorted { $0.date > $1.date }
         save()
     }
 
@@ -234,10 +336,33 @@ final class RunStore: ObservableObject {
         }
     }
 
+    /// Set if the saved rides file exists but couldn't be read. The UI can warn instead of
+    /// pretending there's no history — silently showing an empty list would invite the rider
+    /// to record over it, or hit Clear All, and destroy recoverable data.
+    @Published private(set) var loadFailed = false
+
     private func load() {
-        if let data = try? Data(contentsOf: fileURL),
-           let decoded = try? JSONDecoder().decode([SpeedRecording].self, from: data) {
-            recordings = decoded
+        let fm = FileManager.default
+
+        if fm.fileExists(atPath: fileURL.path) {
+            do {
+                let data = try Data(contentsOf: fileURL)
+                recordings = try JSONDecoder().decode([SpeedRecording].self, from: data)
+            } catch {
+                // The file exists but won't decode. Don't lose it: move it aside under a
+                // timestamped name before carrying on, otherwise the next ride saved would
+                // overwrite it. It's plain JSON and reachable via the Files app, so a
+                // preserved copy is genuinely recoverable.
+                let formatter = DateFormatter()
+                formatter.dateFormat = "yyyy-MM-dd-HHmmss"
+                let salvage = fileURL
+                    .deletingLastPathComponent()
+                    .appendingPathComponent("recordings-unreadable-\(formatter.string(from: Date())).json")
+                try? fm.moveItem(at: fileURL, to: salvage)
+
+                loadFailed = true
+                recordings = []
+            }
             return
         }
 

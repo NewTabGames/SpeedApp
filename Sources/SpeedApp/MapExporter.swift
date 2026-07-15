@@ -102,12 +102,9 @@ enum MapExporter {
             casing.stroke()
 
             if colorBySpeed && recording.samples.count > 1 {
-                // Same shading as the on-screen map: each segment colored by the average
-                // speed of its two endpoints, normalized to this ride's own speed range.
-                let speeds = recording.samples.map(\.mph)
-                let lo = speeds.min() ?? 0
-                var hi = speeds.max() ?? 1
-                if hi - lo < 0.1 { hi = lo + 0.1 }
+                // Same ranking-based scale as the on-screen map, so a shared image matches
+                // what the rider actually saw.
+                let scale = SpeedScale(samples: recording.samples)
 
                 cg.setLineCap(.round)
                 cg.setLineJoin(.round)
@@ -115,7 +112,7 @@ enum MapExporter {
 
                 for i in 0..<(points.count - 1) {
                     let avgSpeed = (recording.samples[i].mph + recording.samples[i + 1].mph) / 2
-                    let t = (avgSpeed - lo) / (hi - lo)
+                    let t = scale.normalized(avgSpeed)
                     cg.setStrokeColor(accentTheme.speedShadeUIColor(t).cgColor)
                     cg.move(to: points[i])
                     cg.addLine(to: points[i + 1])

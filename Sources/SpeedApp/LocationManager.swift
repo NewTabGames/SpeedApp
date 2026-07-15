@@ -14,6 +14,30 @@ struct SpeedSample: Codable, Identifiable, Equatable {
     var altitudeMeters: Double = 0
 
     var id: Double { offsetSeconds }
+
+    init(offsetSeconds: Double, mph: Double, latitude: Double, longitude: Double, altitudeMeters: Double = 0) {
+        self.offsetSeconds = offsetSeconds
+        self.mph = mph
+        self.latitude = latitude
+        self.longitude = longitude
+        self.altitudeMeters = altitudeMeters
+    }
+
+    // Hand-written for the same reason as SpeedRecording: `altitudeMeters` was added after
+    // rides were already being saved, and the synthesized decoder throws on a missing key
+    // rather than using the default. Every sample of every older ride lacks it.
+    enum CodingKeys: String, CodingKey {
+        case offsetSeconds, mph, latitude, longitude, altitudeMeters
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        offsetSeconds = try c.decode(Double.self, forKey: .offsetSeconds)
+        mph = try c.decode(Double.self, forKey: .mph)
+        latitude = try c.decode(Double.self, forKey: .latitude)
+        longitude = try c.decode(Double.self, forKey: .longitude)
+        altitudeMeters = try c.decodeIfPresent(Double.self, forKey: .altitudeMeters) ?? 0
+    }
 }
 
 final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
@@ -109,6 +133,12 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
     // Exponential moving average smoothing
     private var emaSpeed: Double? = nil
 
+    // GPS-gap watchdog
+    /// When the last usable fix arrived. The display link checks this every frame.
+    private var lastFixAt: Date?
+    /// How long without a fix before the speed is zeroed and the signal shows "acquiring".
+    private let gpsGapTimeout: TimeInterval = 4.0
+
     override init() {
         super.init()
         manager.delegate = self
@@ -192,10 +222,40 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
     /// Runs every display frame (~60fps). Eases the shown number toward the real GPS
     /// speed so it counts up/down smoothly rather than jumping once per second.
     ///
+    /// Also doubles as the GPS watchdog, since it ticks whether or not fixes arrive:
+    /// - If no fix has come in for a few seconds (tunnel, indoors), the speed is zeroed and
+    ///   the signal indicator drops to "acquiring". Without this the speedometer freezes at
+    ///   the last value forever — showing a confident 17 mph while standing still inside.
+    /// - The ride timer is recomputed here too. It used to advance only on GPS fixes, so a
+    ///   signal gap stalled the clock even though the ride was very much still happening.
+    ///
     /// Only assigns when the value actually changes — `displaySpeedMph` is @Published, and
     /// assigning fires a change notification even for an identical value, which would
     /// re-render every observing view 60x/sec forever while parked.
     @objc private func stepDisplaySpeed() {
+        // GPS-gap watchdog.
+        if let last = lastFixAt, Date().timeIntervalSince(last) > gpsGapTimeout {
+            if speedMph != 0 {
+                speedMph = 0
+                // Reset the average so the first fix after the gap starts fresh rather than
+                // being blended with a stale pre-gap speed.
+                emaSpeed = nil
+            }
+            if signalQuality != .acquiring {
+                signalQuality = .acquiring
+            }
+        }
+
+        // Keep the ride timer honest through GPS gaps. Throttled to ~4 updates/sec — it's a
+        // whole-second label, and assigning a @Published 60x/sec re-renders for nothing.
+        if isRecording, !isPaused, let start = recordingStartDate {
+            let openPause = pauseBeganAt.map { Date().timeIntervalSince($0) } ?? 0
+            let elapsed = max(Date().timeIntervalSince(start) - pausedAccumulated - openPause, 0)
+            if elapsed - recordingElapsed >= 0.25 {
+                recordingElapsed = elapsed
+            }
+        }
+
         let target = speedMph
         let delta = target - displaySpeedMph
 
@@ -315,43 +375,60 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         guard let location = locations.last else { return }
 
+        // Ignore cached fixes. Right after startUpdatingLocation, iOS replays the last known
+        // location — which can be minutes old and from wherever you last had signal. Letting
+        // one through puts a bogus first point in a recording (and a long phantom line from
+        // there to your real position).
+        guard abs(location.timestamp.timeIntervalSinceNow) < 10 else { return }
+
         // Reject clearly invalid fixes outright (negative accuracy = no fix).
         if location.horizontalAccuracy < 0 {
             signalQuality = .weak
             return
         }
 
-        let rawSpeedMps = max(location.speed, 0)
-        let mph = rawSpeedMps * 2.236936
-
-        if location.speedAccuracy >= 0 && location.speedAccuracy > 4 {
-            signalQuality = .weak
-        } else {
-            signalQuality = .good
-        }
         currentLocation = location
+        lastFixAt = Date()
 
-        let smoothed: Double
-        if let previous = emaSpeed {
-            smoothed = smoothingAlpha * mph + (1 - smoothingAlpha) * previous
-        } else {
-            smoothed = mph
+        // CLLocation.speed is -1 when the device couldn't work out a speed for this fix
+        // (common under bridges and in tunnels). The old code clamped that to 0, feeding a
+        // false "0 mph" into the smoothing — the speedometer would randomly dip toward zero
+        // mid-ride, and a couple of such fixes in a row could trigger a false auto-pause.
+        // An invalid speed now just holds the previous value instead.
+        let speedIsValid = location.speed >= 0
+        // speedAccuracy is the reading's uncertainty in m/s (negative = unknown). Above
+        // ~4 m/s (~9 mph of slop) the number is too mushy to trust for records.
+        let speedIsTrustworthy = speedIsValid
+            && (location.speedAccuracy < 0 || location.speedAccuracy <= 4)
+
+        signalQuality = speedIsTrustworthy ? .good : .weak
+
+        if speedIsValid {
+            let mph = location.speed * 2.236936
+            let smoothed: Double
+            if let previous = emaSpeed {
+                smoothed = smoothingAlpha * mph + (1 - smoothingAlpha) * previous
+            } else {
+                smoothed = mph
+            }
+            emaSpeed = smoothed
+
+            // The live speedometer always updates from a valid reading, even a mushy one —
+            // but only trustworthy readings are allowed to set the max-speed record, so a
+            // single glitchy fix can't hand you a fake 70 mph personal best (or a false
+            // speed-limit alert).
+            speedMph = smoothed
+            if speedIsTrustworthy, smoothed > maxSpeedMph {
+                maxSpeedMph = smoothed
+            }
         }
-        emaSpeed = smoothed
 
-        // The live speedometer always updates — a valid fix is a valid speed reading,
-        // even if it's not precise enough to trust for drawing the route.
-        speedMph = smoothed
-        if smoothed > maxSpeedMph {
-            maxSpeedMph = smoothed
-        }
-
-        handleAutoPause(currentMph: smoothed)
+        handleAutoPause(currentMph: speedMph)
 
         // Always call this so the ride timer keeps advancing. Whether this fix is precise
         // enough to add to the route is decided inside, so a loose-GPS patch doesn't stall
         // the clock — it just leaves a small gap in the drawn path.
-        handleRecordingLogic(currentMph: smoothed, location: location)
+        handleRecordingLogic(currentMph: speedMph, location: location)
     }
 
     /// Watches for you sitting still and pauses the recording, then unpauses when you move again.

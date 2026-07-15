@@ -15,8 +15,17 @@ targets:
       properties:
         UILaunchScreen: {}
         CFBundleDisplayName: "Epstein's GPS"
+        # Makes the app's Documents folder (where recordings.json lives) visible in the
+        # Files app under "On My iPhone". Lets you grab or restore your ride data directly,
+        # and means it's included in iCloud device backups.
+        UIFileSharingEnabled: true
+        LSSupportsOpeningDocumentsInPlace: true
         UIBackgroundModes:
           - location
+          # Needed for spoken turn-by-turn to keep working with the screen off. Without this,
+          # iOS won't let the app start an audio session from the background, so directions
+          # go silent the moment the phone locks.
+          - audio
         NSLocationWhenInUseUsageDescription: "Used to measure your speed and record your ride."
         NSLocationAlwaysAndWhenInUseUsageDescription: "Lets the app keep recording your speed, distance, and route while your phone is locked or in your pocket."
         UIRequiredDeviceCapabilities:

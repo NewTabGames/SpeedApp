@@ -176,6 +176,14 @@ struct AboutView: View {
             Feature(
                 name: "Plays nicely with music",
                 detail: "Spotify or whatever you're listening to only dips for the second it takes to speak a direction, then goes straight back to full volume."
+            ),
+            Feature(
+                name: "Keeps talking with the screen off",
+                detail: "Spoken directions continue when your phone is locked or in your pocket."
+            ),
+            Feature(
+                name: "Doesn't over-talk",
+                detail: "Ordinary announcements are spaced out so the voice isn't constantly chattering. Turn calls, arrival, and rerouting always come through regardless."
             )
         ]),
 
@@ -195,6 +203,18 @@ struct AboutView: View {
             Feature(
                 name: "Interactive graph",
                 detail: "Drag across any ride's graph to see your exact speed, how far into the ride it was, and the time of day."
+            ),
+            Feature(
+                name: "Trends",
+                detail: "Weekly and monthly charts of your distance and ride count. Empty weeks show as zero, so gaps in your riding are visible rather than hidden."
+            ),
+            Feature(
+                name: "Personal records",
+                detail: "Top speed, longest distance, longest ride, biggest climb, busiest week. You get told right after a ride if you just beat one."
+            ),
+            Feature(
+                name: "Heatmap",
+                detail: "Every route you've ever recorded on one map. Roads you ride often glow brighter than one-off trips."
             ),
             Feature(
                 name: "Lifetime totals",
@@ -236,7 +256,7 @@ struct AboutView: View {
             ),
             Feature(
                 name: "Speed-colored routes",
-                detail: "Saved routes shade from muted (slow) to bright and vivid (fast) in your accent color, so you can see at a glance where you were flying and where you crawled. Exported route images match. Toggle it under Map in Settings."
+                detail: "Saved routes shade from dark and muted (slow) to bright and vivid (fast) in your accent color. Colours are scaled to each ride's own speeds, so a 15 mph scooter trip and an 80 mph drive both show their fast and slow stretches clearly. That means colour shows speed relative to that ride, not an absolute number. Exported route images match. Toggle it under Map in Settings."
             ),
             Feature(
                 name: "Graph style",
@@ -261,6 +281,7 @@ struct AboutView: View {
     /// ever changes (a server, analytics, any network call), update this first.
     static let privacyPoints: [String] = [
         "Your data never leaves your phone. There is no account, no server, no analytics, and no third parties. The app makes no network calls with your data.",
+        "Backing up your rides creates a file you choose where to put. If you save it to iCloud Drive, that copy is in your own iCloud — the app never sends it anywhere itself.",
         "Rides you record are saved on your device so you can view them later. That includes the GPS route, speed, elevation, and any battery levels you logged.",
         "Location is used while the app is open, and continues in the background only while you are actively recording a ride. iOS shows a blue indicator whenever that is happening.",
         "Recording never starts on its own. It only runs when you tap Start, and stops when you tap Stop.",

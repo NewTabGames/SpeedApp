@@ -264,6 +264,7 @@ struct RecordView: View {
     @State private var showEndBatteryPrompt = false
     @State private var batteryEndText: String = ""
     @State private var pendingResult: LocationManager.RecordingResult?
+    @State private var newRecords: [String] = []
     @FocusState private var batteryFieldFocused: Bool
 
     var body: some View {
@@ -307,6 +308,14 @@ struct RecordView: View {
             // a ride with no permission prompt and zero GPS data.
             location.requestPermission()
             location.start()
+        }
+        .alert("New Record!", isPresented: Binding(
+            get: { !newRecords.isEmpty },
+            set: { if !$0 { newRecords = [] } }
+        )) {
+            Button("Nice") { newRecords = [] }
+        } message: {
+            Text("That ride set a new personal best for \(newRecords.joined(separator: ", ")). See it under History → Trends.")
         }
         .sheet(isPresented: $showEndBatteryPrompt, onDismiss: {
             // Safety net: if the sheet was swiped away instead of using Skip/Save, the ride
@@ -510,20 +519,34 @@ struct RecordView: View {
     private func finishSave(logBattery: Bool) {
         showEndBatteryPrompt = false
         guard let result = pendingResult else { return }
+        pendingResult = nil
 
         let start = logBattery ? Double(batteryStartText) : nil
         let end = logBattery ? Double(batteryEndText) : nil
 
-        runStore.addRecording(
+        // Use the returned ride rather than assuming recordings.first — a ride under 2
+        // seconds isn't saved at all, and we'd otherwise be inspecting the *previous* ride
+        // and could congratulate the rider for a record they didn't just set.
+        let saved = runStore.addRecording(
             result: result,
             mode: settings.vehicleMode,
             batteryStart: start,
             batteryEnd: end
         )
+
+        if let end { batteryStartText = String(Int(end)) }
+
+        guard let saved else { return }
         Haptics.success()
 
-        pendingResult = nil
-        if let end { batteryStartText = String(Int(end)) }
+        let broken = runStore.recordsBroken(by: saved)
+        guard !broken.isEmpty else { return }
+
+        // Presenting an alert while the battery sheet is still animating away tends to get
+        // swallowed by SwiftUI, so wait for the dismissal to finish first.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+            newRecords = broken
+        }
     }
 
     // MARK: Formatting
@@ -572,13 +595,32 @@ struct HistoryView: View {
     @State private var exportFailed = false
     /// nil = show every vehicle's rides.
     @State private var modeFilter: VehicleMode? = nil
+    @State private var showHeatmap = false
 
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
+                if runStore.loadFailed {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Label("Couldn't read your saved rides", systemImage: "exclamationmark.triangle.fill")
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(.orange)
+                        Text("The file was kept and renamed. Find it in the Files app under On My iPhone, and send it over if you want it recovered. New rides will save normally.")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(12)
+                    .background(Color.orange.opacity(0.12))
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .padding(.horizontal)
+                    .padding(.top, 8)
+                }
+
                 Picker("", selection: $section) {
                     Text("Rides").tag(0)
-                    Text("Lifetime").tag(1)
+                    Text("Trends").tag(1)
+                    Text("Lifetime").tag(2)
                 }
                 .pickerStyle(.segmented)
                 .padding(.horizontal)
@@ -586,11 +628,18 @@ struct HistoryView: View {
 
                 if section == 0 {
                     ridesList
+                } else if section == 1 {
+                    TrendsView()
                 } else {
                     LifetimeTotalsView()
                 }
             }
             .navigationTitle("History")
+            // A NavigationLink placed inside a Menu doesn't reliably push (menus are UIKit
+            // under the hood), so the menu item sets a flag and the push happens here.
+            .navigationDestination(isPresented: $showHeatmap) {
+                HeatmapView()
+            }
             .toolbar {
                 ToolbarItemGroup(placement: .navigationBarTrailing) {
                     if !runStore.recordings.isEmpty {
@@ -614,6 +663,12 @@ struct HistoryView: View {
                                     Divider()
                                 }
                             }
+                            Button {
+                                showHeatmap = true
+                            } label: {
+                                Label("Heatmap", systemImage: "map.fill")
+                            }
+                            Divider()
                             Button {
                                 exportSummaryCSV()
                             } label: {
@@ -1089,6 +1144,9 @@ struct SettingsView: View {
     @State private var alertSpeedText: String = ""
     @State private var showClearConfirmation = false
     @State private var showAbout = false
+    @State private var showImporter = false
+    @State private var backupFile: ShareableFile?
+    @State private var backupMessage: String?
     @FocusState private var alertFieldFocused: Bool
 
     /// Installed voices, loaded once when the view appears.
@@ -1319,6 +1377,25 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    Button {
+                        Haptics.tap()
+                        exportBackup()
+                    } label: {
+                        Label("Back Up Rides", systemImage: "square.and.arrow.up")
+                    }
+                    Button {
+                        Haptics.tap()
+                        showImporter = true
+                    } label: {
+                        Label("Restore from Backup", systemImage: "square.and.arrow.down")
+                    }
+                } header: {
+                    Text("Backup")
+                } footer: {
+                    Text("Saves all \(runStore.recordings.count) rides to a file you can keep in Files or iCloud Drive. Worth doing before you re-sideload — if the app gets deleted or the signing changes, your rides go with it. Restoring merges: re-importing the same backup won't duplicate anything.")
+                }
+
+                Section {
                     Button("Reset \(settings.vehicleMode.rawValue) Settings", role: .destructive) {
                         Haptics.warning()
                         settings.resetCurrentModeSettings()
@@ -1365,6 +1442,27 @@ struct SettingsView: View {
         .sheet(isPresented: $showAbout) {
             AboutView()
         }
+        .sheet(item: $backupFile) { file in
+            ActivityView(activityItems: [file.url])
+        }
+        .fileImporter(
+            isPresented: $showImporter,
+            allowedContentTypes: [.json],
+            allowsMultipleSelection: false
+        ) { result in
+            handleImport(result)
+        }
+        .alert(
+            "Backup",
+            isPresented: Binding(
+                get: { backupMessage != nil },
+                set: { if !$0 { backupMessage = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(backupMessage ?? "")
+        }
         .alert("Clear History?", isPresented: $showClearConfirmation) {
             Button("Cancel", role: .cancel) {}
             Button("Clear All", role: .destructive) {
@@ -1381,6 +1479,41 @@ struct SettingsView: View {
             showClearConfirmation = true
         } else {
             runStore.clearAllRecordings()
+        }
+    }
+
+    private func exportBackup() {
+        do {
+            let url = try BackupManager.exportBackup(recordings: runStore.recordings)
+            backupFile = ShareableFile(url: url)
+        } catch {
+            backupMessage = error.localizedDescription
+        }
+    }
+
+    private func handleImport(_ result: Result<[URL], Error>) {
+        switch result {
+        case .failure(let error):
+            backupMessage = error.localizedDescription
+
+        case .success(let urls):
+            guard let url = urls.first else { return }
+            do {
+                let backup = try BackupManager.readBackup(from: url)
+                let outcome = runStore.merge(backup.recordings)
+                Haptics.success()
+
+                if outcome.added == 0 {
+                    backupMessage = "Those \(outcome.skipped) rides are already in your history — nothing to add."
+                } else {
+                    let skipNote = outcome.skipped > 0
+                        ? " \(outcome.skipped) were already there."
+                        : ""
+                    backupMessage = "Restored \(outcome.added) ride\(outcome.added == 1 ? "" : "s").\(skipNote)"
+                }
+            } catch {
+                backupMessage = error.localizedDescription
+            }
         }
     }
 

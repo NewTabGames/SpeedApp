@@ -52,6 +52,14 @@ Split into two sections:
 - Export a single ride's raw GPS data as CSV
 - Confirmation prompt before clearing (can be turned off)
 
+**Trends**
+- Weekly and monthly bar charts of distance and ride count
+- Personal records — top speed, longest distance, longest ride, biggest climb, busiest week
+- You're told right after a ride if you just set a new record
+
+**Heatmap**
+- Every route you've recorded on one map; frequently-ridden roads glow brighter
+
 **Lifetime**
 - Total rides, distance, time, top speed, average speed, longest ride, total climb
 - Estimated range per charge, once you've logged battery on a few rides
@@ -97,6 +105,10 @@ Both respect your unit setting (mph/mi or km/h/km), and column headers say which
 | `RouteMap.swift` | Route map view with optional speed-based coloring and a legend |
 | `VoiceCatalog.swift` | Lists the navigation voices installed on the device |
 | `Haptics.swift` | Central haptic feedback helper, respects the Haptics setting |
+| `BackupManager.swift` | Export/restore all rides as a JSON backup file |
+| `RideStats.swift` | Personal records and weekly/monthly trend buckets |
+| `TrendsView.swift` | Trend charts and personal records |
+| `HeatmapView.swift` | All routes overlaid on one map |
 | `SpeechText.swift` | Expands street abbreviations so directions read aloud properly |
 | `TripReplayView.swift` | Animated playback of a saved ride |
 | `CSVExporter.swift` | Ride summary and raw sample CSV export |
@@ -104,6 +116,26 @@ Both respect your unit setting (mph/mi or km/h/km), and column headers say which
 
 Recordings are stored as JSON in the app's Documents directory. All data stays on your device.
 
+
+## Backing up your rides
+
+**Sideloaded apps have no iCloud sync** — CloudKit needs a paid Apple Developer account. Your
+rides live in `recordings.json` on the device and nowhere else.
+
+Installing a new build *over* the existing app normally preserves that file. But if you delete
+the app, change the signing certificate, or wipe the phone, **every ride is gone permanently.**
+
+Two safety nets, both built in:
+
+1. **Settings → Backup → Back Up Rides** — writes every ride to a JSON file you can save in
+   Files or iCloud Drive. **Restore from Backup** merges it back; rides carry stable IDs, so
+   re-importing the same file twice doesn't duplicate anything.
+2. **File Sharing is enabled** — the app's folder appears in the Files app under
+   *On My iPhone → Epstein's GPS*, so you can copy `recordings.json` out directly. It's also
+   included in iCloud device backups.
+
+**Back up before you re-sideload.** It takes five seconds and it's the difference between an
+inconvenience and losing everything.
 
 ## Privacy
 

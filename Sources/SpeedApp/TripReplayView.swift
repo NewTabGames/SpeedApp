@@ -16,6 +16,28 @@ struct TripReplayView: View {
     @State private var speedMultiplier: Double = 1
     @State private var cameraPosition: MapCameraPosition = .automatic
 
+    // The camera's current orientation, mirrored from the map as the rider moves it.
+    //
+    // Following the marker used to rebuild the camera as a north-up region on every tick,
+    // which threw away any rotation, tilt or zoom the moment it was applied — so the map
+    // couldn't be turned while a replay was playing. Keeping these means the follow update
+    // only changes *where* the camera is pointed, never how it's oriented.
+    @State private var cameraHeading: Double = 0
+    @State private var cameraPitch: Double = 0
+    @State private var cameraDistance: Double = 800
+
+    /// Whether the camera tracks the marker. Turning it off lets the map be explored freely
+    /// while the replay keeps running.
+    @State private var followMarker = true
+
+    // Gesture handshake between recenter() and onMapCameraChange. recenter() records what it
+    // applied; the change handler compares incoming values against that to tell the rider's
+    // gestures apart from our own follow updates, and recenter() pauses briefly during one.
+    @State private var lastAppliedHeading: Double = 0
+    @State private var lastAppliedPitch: Double = 0
+    @State private var lastAppliedDistance: Double = 800
+    @State private var lastUserCameraGestureAt: Date?
+
     private let tick = Timer.publish(every: 0.05, on: .main, in: .common).autoconnect()
 
     private var samples: [SpeedSample] { recording.samples }
@@ -109,6 +131,32 @@ struct TripReplayView: View {
             }
         }
         .mapStyle(settings.mapStyle.mapStyle)
+        .mapControls {
+            // Compass appears once the map is rotated off north — tap it to snap back.
+            MapCompass()
+            MapPitchToggle()
+        }
+        // Continuous, so the values track a rotation gesture as it happens rather than only
+        // when it finishes. Without that, the next follow update would fight the gesture and
+        // snap the map back mid-rotate.
+        .onMapCameraChange(frequency: .continuous) { context in
+            // If the camera differs from what recenter() last applied, the change came from
+            // the rider's fingers, not from us. Remember when — recenter() backs off briefly
+            // so a 20-per-second stream of programmatic camera sets doesn't cancel the
+            // gesture mid-pinch or mid-rotate.
+            let cam = context.camera
+            let isUserGesture =
+                abs(cam.heading - lastAppliedHeading) > 1.0 ||
+                abs(cam.pitch - lastAppliedPitch) > 1.0 ||
+                abs(cam.distance - lastAppliedDistance) > max(lastAppliedDistance * 0.02, 5)
+            if isUserGesture {
+                lastUserCameraGestureAt = Date()
+            }
+
+            cameraHeading = cam.heading
+            cameraPitch = cam.pitch
+            cameraDistance = cam.distance
+        }
         .frame(maxHeight: .infinity)
     }
 
@@ -197,6 +245,18 @@ struct TripReplayView: View {
                         .foregroundStyle(settings.accent.color)
                 }
 
+                // Lets the camera be released from the marker so the map can be explored
+                // while the replay keeps running.
+                Button {
+                    Haptics.tap()
+                    followMarker.toggle()
+                    if followMarker { recenter() }
+                } label: {
+                    Image(systemName: followMarker ? "location.fill.viewfinder" : "location.viewfinder")
+                        .font(.title3)
+                        .foregroundStyle(followMarker ? settings.accent.color : .secondary)
+                }
+
                 Menu {
                     ForEach([0.5, 1.0, 2.0, 4.0, 8.0], id: \.self) { rate in
                         Button {
@@ -264,15 +324,41 @@ struct TripReplayView: View {
             longitudeDelta: max((lons.max()! - lons.min()!) * 1.5, 0.005)
         )
         cameraPosition = .region(MKCoordinateRegion(center: center, span: span))
+
+        // Seed the follow camera's zoom from how far the ride ranged, so the first follow
+        // update doesn't snap to an arbitrary distance.
+        let spread = max(span.latitudeDelta, span.longitudeDelta)
+        cameraDistance = min(max(spread * 40_000, 400), 1_500)
     }
 
-    /// Follows the marker while playing, but leaves the camera alone when paused so the
-    /// rider can pan and zoom around the route freely.
+    /// Keeps the camera pointed at the marker without touching how it's oriented.
+    ///
+    /// Builds a MapCamera from the heading/pitch/distance the rider last left the map at,
+    /// changing only the centre. The previous version constructed a north-up region here,
+    /// which reset any rotation on every frame and made the map impossible to turn during
+    /// playback.
     private func recenter() {
-        guard isPlaying, let coordinate = interpolatedCoordinate else { return }
-        cameraPosition = .region(MKCoordinateRegion(
-            center: coordinate,
-            span: MKCoordinateSpan(latitudeDelta: 0.004, longitudeDelta: 0.004)
-        ))
+        guard followMarker, let coordinate = interpolatedCoordinate else { return }
+
+        // Back off while the rider's fingers are on the map. A programmatic camera set can
+        // cancel an in-progress gesture, so recentering 20 times a second while they rotate
+        // would make the map judder and fight them. Following resumes moments after the
+        // gesture settles, keeping whatever orientation they left it at.
+        if let last = lastUserCameraGestureAt, Date().timeIntervalSince(last) < 0.7 {
+            return
+        }
+
+        lastAppliedHeading = cameraHeading
+        lastAppliedPitch = cameraPitch
+        lastAppliedDistance = cameraDistance
+
+        cameraPosition = .camera(
+            MapCamera(
+                centerCoordinate: coordinate,
+                distance: cameraDistance,
+                heading: cameraHeading,
+                pitch: cameraPitch
+            )
+        )
     }
 }

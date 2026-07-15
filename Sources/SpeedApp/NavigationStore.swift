@@ -55,6 +55,9 @@ final class NavigationStore: NSObject, ObservableObject, MKLocalSearchCompleterD
     private var earlyAnnouncedSteps: Set<Int> = []
     /// Which steps we've already given the final "turn now" call for.
     private var finalAnnouncedSteps: Set<Int> = []
+    /// Nearest we've been to the current step's maneuver point. Used to detect passing a
+    /// turn during a GPS gap (see updateProgress). Reset on every step change.
+    private var closestApproachMeters: Double = .greatestFiniteMagnitude
 
     // Off-route detection
     /// Cached route geometry, so we're not pulling points out of the polyline on every fix.
@@ -200,6 +203,7 @@ final class NavigationStore: NSObject, ObservableObject, MKLocalSearchCompleterD
         stepIndex = 0
         earlyAnnouncedSteps = []
         finalAnnouncedSteps = []
+        closestApproachMeters = .greatestFiniteMagnitude
         consecutiveOffRouteFixes = 0
     }
 
@@ -207,15 +211,19 @@ final class NavigationStore: NSObject, ObservableObject, MKLocalSearchCompleterD
 
     func startNavigation() {
         guard route != nil else { return }
+        // Claimed for the whole navigation session so speech keeps working with the screen
+        // off. iOS won't let a backgrounded app activate a session from cold.
+        activateAudioSession()
         isNavigating = true
         arrived = false
         resetGuidanceState()
         advanceToFirstRealStep()
-        announceCurrentStep(prefix: nil)
+        announceCurrentStep(prefix: nil, priority: .critical)
     }
 
     func stopNavigation() {
         synthesizer.stopSpeaking(at: .immediate)
+        releaseAudioSession()
         cancelDestination()
     }
 
@@ -263,9 +271,28 @@ final class NavigationStore: NSObject, ObservableObject, MKLocalSearchCompleterD
         }
         if distance <= finalCallMeters, !finalAnnouncedSteps.contains(stepIndex) {
             finalAnnouncedSteps.insert(stepIndex)
-            announceCurrentStep(prefix: nil)
+            // Critical: this is the "turn now" call. Suppressing it to respect a cooldown
+            // would mean silently letting the rider miss the turn.
+            announceCurrentStep(prefix: nil, priority: .critical)
         }
-        if distance <= maneuverPassedMeters {
+
+        // Step advance, two ways:
+        // 1. The normal case — we got a fix within a few metres of the maneuver point.
+        // 2. The GPS-gap case — the fix stream skipped right over the turn (an overpass or
+        //    tunnel at exactly the wrong moment), so no fix ever landed inside that window.
+        //    Detect it by closest approach, in two tiers: if we got genuinely close (the
+        //    final call fired around 35 m, so ≤40 m means it was announced) a modest move
+        //    away confirms we passed it; if we only got moderately close, demand a much
+        //    bigger overshoot before concluding that, so a curving approach road can't
+        //    false-trigger an early advance. Without any of this, navigation wedges on the
+        //    old step forever, with the distance counting up instead of down.
+        closestApproachMeters = min(closestApproachMeters, distance)
+        let passedDirectly = distance <= maneuverPassedMeters
+        let passedCleanly = closestApproachMeters <= 40
+            && distance > closestApproachMeters + 30
+        let passedWithGap = closestApproachMeters <= 80
+            && distance > closestApproachMeters + 60
+        if passedDirectly || passedCleanly || passedWithGap {
             advanceStep()
         }
     }
@@ -273,11 +300,12 @@ final class NavigationStore: NSObject, ObservableObject, MKLocalSearchCompleterD
     private func advanceStep() {
         guard let route else { return }
         stepIndex += 1
+        closestApproachMeters = .greatestFiniteMagnitude
 
         if stepIndex >= route.steps.count {
             arrived = true
             isNavigating = false
-            speak("You have arrived at your destination.")
+            speak("You have arrived at your destination.", priority: .critical)
         } else if route.steps[stepIndex].instructions.trimmingCharacters(in: .whitespaces).isEmpty {
             advanceStep()
         } else {
@@ -285,7 +313,7 @@ final class NavigationStore: NSObject, ObservableObject, MKLocalSearchCompleterD
         }
     }
 
-    private func announceCurrentStep(prefix: String?) {
+    private func announceCurrentStep(prefix: String?, priority: SpeechPriority = .normal) {
         guard let route, stepIndex < route.steps.count else { return }
         let instruction = route.steps[stepIndex].instructions
         guard !instruction.isEmpty else { return }
@@ -297,9 +325,9 @@ final class NavigationStore: NSObject, ObservableObject, MKLocalSearchCompleterD
         let spokenInstruction = SpeechText.spoken(instruction)
 
         if let prefix {
-            speak("\(prefix) \(spokenInstruction)")
+            speak("\(prefix) \(spokenInstruction)", priority: priority)
         } else {
-            speak(spokenInstruction)
+            speak(spokenInstruction, priority: priority)
         }
     }
 
@@ -309,6 +337,12 @@ final class NavigationStore: NSObject, ObservableObject, MKLocalSearchCompleterD
     /// once they've been clearly off it for several fixes in a row.
     private func checkOffRoute(currentLocation: CLLocation) {
         guard !routeCoordinates.isEmpty, let destination = destinationCoordinate else { return }
+
+        // A loose fix can't tell us whether we're off route — with 60+ metres of error, a
+        // rider dead-centre on the road can read as 50 m away from it. Don't count these
+        // fixes either way: don't increment the off-route streak, but don't reset it either,
+        // so a genuine off-route detection isn't cancelled by one mushy reading.
+        guard currentLocation.horizontalAccuracy <= 30 else { return }
 
         let distanceFromRoute = distanceToRoute(from: currentLocation)
         isOffRoute = distanceFromRoute > offRouteThresholdMeters
@@ -333,7 +367,7 @@ final class NavigationStore: NSObject, ObservableObject, MKLocalSearchCompleterD
         isRerouting = true
         lastRerouteAt = Date()
         consecutiveOffRouteFixes = 0
-        speak("Recalculating.")
+        speak("Recalculating.", priority: .critical)
 
         let request = MKDirections.Request()
         request.source = MKMapItem(placemark: MKPlacemark(coordinate: from))
@@ -353,7 +387,7 @@ final class NavigationStore: NSObject, ObservableObject, MKLocalSearchCompleterD
             self.apply(route: newRoute)
             self.isOffRoute = false
             self.advanceToFirstRealStep()
-            self.announceCurrentStep(prefix: nil)
+            self.announceCurrentStep(prefix: nil, priority: .critical)
         }
     }
 
@@ -407,8 +441,42 @@ final class NavigationStore: NSObject, ObservableObject, MKLocalSearchCompleterD
         return String(format: "%.1f miles", miles)
     }
 
-    private func speak(_ text: String) {
+    /// How urgent an announcement is. The cooldown only silences the chatty stuff — anything
+    /// you'd actually be annoyed to miss ignores it.
+    private enum SpeechPriority {
+        /// Ordinary guidance. Suppressed if we spoke in the last few seconds.
+        case normal
+        /// Must be heard now — the final turn call, arrival, rerouting. Never suppressed,
+        /// and cuts off anything already being said.
+        case critical
+    }
+
+    /// Minimum gap between ordinary announcements, so the voice stops narrating every small
+    /// thing back-to-back. Critical announcements ignore this entirely.
+    private let speechCooldown: TimeInterval = 5.0
+
+    private var lastSpokeAt: Date?
+
+    private func speak(_ text: String, priority: SpeechPriority = .normal) {
         guard voiceEnabled, !text.isEmpty else { return }
+
+        switch priority {
+        case .critical:
+            // Always speak. If something else is mid-sentence, cut it off — a stale
+            // "in 500 feet" is worse than useless when the turn is happening right now.
+            if synthesizer.isSpeaking {
+                synthesizer.stopSpeaking(at: .immediate)
+            }
+
+        case .normal:
+            // Drop it if we've only just finished saying something, rather than queueing it
+            // up — a queued direction would arrive too late to be useful anyway.
+            let sinceLast = lastSpokeAt.map { Date().timeIntervalSince($0) }
+                ?? .greatestFiniteMagnitude
+            guard sinceLast >= speechCooldown, !synthesizer.isSpeaking else { return }
+        }
+
+        lastSpokeAt = Date()
 
         let alreadyActive = audioSessionActive
         activateAudioSession()
@@ -416,10 +484,8 @@ final class NavigationStore: NSObject, ObservableObject, MKLocalSearchCompleterD
         let utterance = AVSpeechUtterance(string: text)
         utterance.voice = VoiceCatalog.voice(for: voiceIdentifier)
         utterance.rate = speechRate
-        // If we just activated the session from cold, it needs a beat to actually engage the
-        // audio route (especially when ducking Spotify). Speaking instantly clips the first
-        // word or two. A short lead-in delay only when starting cold avoids that without
-        // adding lag to back-to-back announcements.
+        // If the session was just activated from cold, it needs a beat to engage the audio
+        // route (especially when ducking music). Speaking instantly clips the first word.
         utterance.preUtteranceDelay = alreadyActive ? 0 : 0.25
 
         synthesizer.speak(utterance)
@@ -427,35 +493,42 @@ final class NavigationStore: NSObject, ObservableObject, MKLocalSearchCompleterD
 
     // MARK: - Audio session
     //
-    // Spoken directions need to duck whatever's playing (Spotify, podcasts) so they're
-    // audible — but only for the moment they're actually speaking. Ducking is tied to the
-    // session being active, so the session is claimed right before an utterance and handed
-    // straight back afterwards. Any other app's audio returns to full volume immediately.
+    // Two competing requirements:
+    //   1. Music must not stay quiet the whole time (that was the original Spotify bug).
+    //   2. Speech must still work with the screen off — and iOS won't let a backgrounded app
+    //      activate an audio session from scratch, so tearing it down between turns meant
+    //      guidance went silent as soon as the phone locked.
+    //
+    // The resolution is `.duckOthers` combined with `.mixWithOthers`: the session can be held
+    // for the whole navigation session without permanently suppressing other audio. iOS only
+    // ducks while something is actually being spoken, and restores the volume by itself in
+    // between. So the session is claimed when navigation starts and released when it ends —
+    // not around each individual utterance.
 
-    /// Whether we currently hold the audio session. Avoids re-activating (and re-delaying)
-    /// for back-to-back announcements.
     private var audioSessionActive = false
 
-    /// Claims the audio session so the next utterance is heard over music.
+    /// Claims the audio session for the duration of navigation.
     private func activateAudioSession() {
         guard !audioSessionActive else { return }
         let session = AVAudioSession.sharedInstance()
         do {
-            try session.setCategory(.playback, mode: .voicePrompt, options: [.duckOthers])
+            try session.setCategory(
+                .playback,
+                mode: .voicePrompt,
+                options: [.duckOthers, .mixWithOthers]
+            )
             try session.setActive(true)
             audioSessionActive = true
         } catch {
-            // If the session can't be claimed, the direction just won't be ducked over
-            // music. Not worth interrupting navigation over.
+            // If the session can't be claimed, directions just won't duck over music.
+            // Not worth interrupting navigation over.
         }
     }
 
-    /// Hands the audio session back. `.notifyOthersOnDeactivation` is what tells Spotify
-    /// to ramp back up to full volume — without it, music can stay quiet.
+    /// Hands the audio session back. `.notifyOthersOnDeactivation` is what tells Spotify to
+    /// ramp back up to full volume — without it, music can stay quiet.
     private func releaseAudioSession() {
-        // Multiple utterances can be queued back to back. Don't release mid-sequence,
-        // or the volume would bounce up and down and words could get clipped.
-        guard !synthesizer.isSpeaking else { return }
+        guard audioSessionActive else { return }
         audioSessionActive = false
 
         DispatchQueue.global(qos: .userInitiated).async {
@@ -469,21 +542,12 @@ final class NavigationStore: NSObject, ObservableObject, MKLocalSearchCompleterD
     // MARK: - AVSpeechSynthesizerDelegate
 
     func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
-        scheduleSessionRelease()
+        // Deliberately does NOT release the session — it's held for the whole navigation
+        // session so speech survives the screen locking. Released in stopNavigation().
     }
 
     func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
-        scheduleSessionRelease()
-    }
-
-    /// Waits a beat before releasing. Turn announcements often come in pairs (early warning,
-    /// then the turn itself); releasing instantly between them would clip audio and make the
-    /// music volume bounce. If nothing else started speaking in that window, let it go.
-    private func scheduleSessionRelease() {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
-            guard let self, !self.synthesizer.isSpeaking else { return }
-            self.releaseAudioSession()
-        }
+        // Same as above.
     }
 }
 

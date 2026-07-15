@@ -37,8 +37,17 @@ struct MapTabView: View {
             withAnimation(.easeInOut(duration: 0.35)) {
                 cameraPosition = .userLocation(followsHeading: false, fallback: .automatic)
             }
+        } else {
+            // Turning follow OFF has to actively freeze the camera. `.userLocation` is
+            // itself what makes MapKit track the rider — leave it set and the map keeps
+            // following, which made the toggle appear to do nothing on release.
+            if let coord = location.currentLocation?.coordinate {
+                cameraPosition = .region(MKCoordinateRegion(
+                    center: coord,
+                    span: currentSpan ?? MKCoordinateSpan(latitudeDelta: 0.02, longitudeDelta: 0.02)
+                ))
+            }
         }
-        // When turning off, we simply stop driving the camera; it stays where MapKit left it.
     }
 
     var body: some View {
@@ -110,6 +119,11 @@ struct MapTabView: View {
             }
             .padding(.top, 8)
             .padding(.horizontal)
+            // Without this, SwiftUI slides the whole overlay upward to keep the focused
+            // text field above the keyboard — which shoves the search bar off the top of
+            // the screen. The bar is already at the top and never obscured, so the
+            // avoidance is pure harm here.
+            .ignoresSafeArea(.keyboard, edges: .bottom)
 
             // Floating map controls, bottom-right.
             VStack {
@@ -203,31 +217,38 @@ struct MapTabView: View {
     // MARK: - Suggestions dropdown
 
     private var suggestionsList: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            ForEach(navigation.suggestions, id: \.self) { suggestion in
-                Button {
-                    searchFocused = false
-                    navigation.selectSuggestion(suggestion, currentCoordinate: location.currentLocation?.coordinate)
-                } label: {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(suggestion.title)
-                            .font(.subheadline.weight(.medium))
-                            .foregroundStyle(.primary)
-                        if !suggestion.subtitle.isEmpty {
-                            Text(suggestion.subtitle)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+        // Scrollable and height-capped: the completer can return a dozen results, and an
+        // unbounded stack would run off the bottom of the screen (and, with the keyboard up,
+        // drag the search bar off the top with it).
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(navigation.suggestions, id: \.self) { suggestion in
+                    Button {
+                        Haptics.tap()
+                        searchFocused = false
+                        navigation.selectSuggestion(suggestion, currentCoordinate: location.currentLocation?.coordinate)
+                    } label: {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(suggestion.title)
+                                .font(.subheadline.weight(.medium))
+                                .foregroundStyle(.primary)
+                            if !suggestion.subtitle.isEmpty {
+                                Text(suggestion.subtitle)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 10)
-                }
-                if suggestion != navigation.suggestions.last {
-                    Divider().padding(.leading, 12)
+                    if suggestion != navigation.suggestions.last {
+                        Divider().padding(.leading, 12)
+                    }
                 }
             }
         }
+        .frame(maxHeight: 280)
         .background(.ultraThinMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 14))
         .shadow(radius: 4)
