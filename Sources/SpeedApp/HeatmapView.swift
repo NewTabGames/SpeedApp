@@ -10,6 +10,7 @@ import MapKit
 struct HeatmapView: View {
     @EnvironmentObject var settings: SettingsStore
     @EnvironmentObject var heatmapStore: HeatmapStore
+    @EnvironmentObject var runStore: RunStore
 
     var body: some View {
         Group {
@@ -26,6 +27,16 @@ struct HeatmapView: View {
                 }
             } else if heatmapStore.isRendering {
                 ProgressView("Building heatmap…")
+            } else if hasRidesToMap {
+                // Rides exist but no image is cached yet — e.g. they were recorded before the
+                // heatmap feature, or the cache was cleared. Build it now.
+                ProgressView("Building heatmap…")
+                    .onAppear {
+                        // Defer so we're not flipping a @Published flag mid-render.
+                        DispatchQueue.main.async {
+                            heatmapStore.rebuild(from: runStore.recordings)
+                        }
+                    }
             } else {
                 ContentUnavailableView(
                     "No Routes Yet",
@@ -36,6 +47,11 @@ struct HeatmapView: View {
         }
         .navigationTitle("Heatmap")
         .navigationBarTitleDisplayMode(.inline)
+    }
+
+    /// Whether there's anything worth rendering — at least one ride with real GPS points.
+    private var hasRidesToMap: Bool {
+        runStore.recordings.contains { $0.samples.count > 1 }
     }
 
     private var legend: some View {
