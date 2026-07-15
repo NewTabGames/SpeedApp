@@ -11,6 +11,7 @@ struct MapTabView: View {
     @State private var selectedMapItem: MapSelection<MKMapItem>?
     /// When true, the camera stays pinned to the rider's location as they move ("lock on").
     @State private var followMode = false
+    @State private var showHeatmap = false
     /// Best-effort current zoom span, so recentering doesn't also change the zoom level.
     @State private var currentSpan: MKCoordinateSpan?
     @FocusState private var searchFocused: Bool
@@ -131,6 +132,20 @@ struct MapTabView: View {
                 HStack {
                     Spacer()
                     VStack(spacing: 12) {
+                        // Heatmap: all your recorded routes overlaid on one map.
+                        Button {
+                            Haptics.tap()
+                            showHeatmap = true
+                        } label: {
+                            Image(systemName: "map.fill")
+                                .font(.title3)
+                                .foregroundStyle(settings.accent.color)
+                                .frame(width: 48, height: 48)
+                                .background(.ultraThinMaterial)
+                                .clipShape(Circle())
+                                .shadow(radius: 3)
+                        }
+
                         // Lock-on: hand the camera to MapKit's user-tracking so it follows
                         // me as I move. Toggle.
                         Button {
@@ -180,6 +195,16 @@ struct MapTabView: View {
         .onAppear {
             location.requestPermission()
             location.start()
+        }
+        .sheet(isPresented: $showHeatmap) {
+            NavigationStack {
+                HeatmapView()
+                    .toolbar {
+                        ToolbarItem(placement: .navigationBarLeading) {
+                            Button("Done") { showHeatmap = false }
+                        }
+                    }
+            }
         }
         .onReceive(location.$currentLocation) { loc in
             if let loc {

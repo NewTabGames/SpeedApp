@@ -214,7 +214,7 @@ struct AboutView: View {
             ),
             Feature(
                 name: "Heatmap",
-                detail: "Every route you've ever recorded on one map. Roads you ride often glow brighter than one-off trips."
+                detail: "Every route you've ever recorded on one map. Roads you ride often glow brighter than one-off trips. Open it from the map button on the Map tab."
             ),
             Feature(
                 name: "Lifetime totals",

@@ -595,7 +595,6 @@ struct HistoryView: View {
     @State private var exportFailed = false
     /// nil = show every vehicle's rides.
     @State private var modeFilter: VehicleMode? = nil
-    @State private var showHeatmap = false
 
     var body: some View {
         NavigationStack {
@@ -635,11 +634,6 @@ struct HistoryView: View {
                 }
             }
             .navigationTitle("History")
-            // A NavigationLink placed inside a Menu doesn't reliably push (menus are UIKit
-            // under the hood), so the menu item sets a flag and the push happens here.
-            .navigationDestination(isPresented: $showHeatmap) {
-                HeatmapView()
-            }
             .toolbar {
                 ToolbarItemGroup(placement: .navigationBarTrailing) {
                     if !runStore.recordings.isEmpty {
@@ -663,12 +657,6 @@ struct HistoryView: View {
                                     Divider()
                                 }
                             }
-                            Button {
-                                showHeatmap = true
-                            } label: {
-                                Label("Heatmap", systemImage: "map.fill")
-                            }
-                            Divider()
                             Button {
                                 exportSummaryCSV()
                             } label: {
