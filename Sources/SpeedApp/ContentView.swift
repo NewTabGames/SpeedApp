@@ -1215,6 +1215,7 @@ struct RecordingDetailView: View {
 struct SettingsView: View {
     @EnvironmentObject var settings: SettingsStore
     @EnvironmentObject var runStore: RunStore
+    @EnvironmentObject var location: LocationManager
     @EnvironmentObject var heatmapStore: HeatmapStore
 
     @State private var alertSpeedText: String = ""
