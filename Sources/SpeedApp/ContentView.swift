@@ -784,10 +784,30 @@ struct HistoryView: View {
                         }
                         .tint(.blue)
                     }
+                    .contextMenu {
+                        // Quick vehicle reassignment without opening the ride — for when
+                        // you recorded under the wrong one.
+                        Menu {
+                            ForEach(VehicleMode.allCases) { mode in
+                                Button {
+                                    Haptics.selection()
+                                    runStore.setMode(id: rec.id, to: mode)
+                                } label: {
+                                    if rec.mode == mode {
+                                        Label(mode.rawValue, systemImage: "checkmark")
+                                    } else {
+                                        Label(mode.rawValue, systemImage: mode.icon)
+                                    }
+                                }
+                            }
+                        } label: {
+                            Label("Change Vehicle", systemImage: "arrow.triangle.2.circlepath")
+                        }
+                    }
                 }
             } footer: {
                 if !visibleRecordings.isEmpty {
-                    Text("Swipe a ride to rename or delete it.")
+                    Text("Swipe a ride to rename or delete it. Press and hold to change its vehicle.")
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                 }
@@ -981,10 +1001,18 @@ struct LifetimeTotalsView: View {
 struct RecordingDetailView: View {
     let recording: SpeedRecording
     @EnvironmentObject var settings: SettingsStore
+    @EnvironmentObject var runStore: RunStore
 
     @State private var shareFile: ShareableFile?
     @State private var isExporting = false
     @State private var exportErrorMessage: String?
+
+    /// The ride's current vehicle, read live from the store. `recording` is an immutable
+    /// snapshot taken when this screen opened, so after a reassignment it would still show
+    /// the old vehicle without this lookup.
+    private var currentMode: VehicleMode {
+        runStore.recordings.first(where: { $0.id == recording.id })?.mode ?? recording.mode
+    }
 
     private var coordinates: [CLLocationCoordinate2D] {
         recording.samples.map { CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude) }
@@ -1075,7 +1103,27 @@ struct RecordingDetailView: View {
         .navigationTitle(recording.displayName)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
+            ToolbarItemGroup(placement: .navigationBarTrailing) {
+                // Reassign the ride's vehicle — for when you recorded under the wrong one.
+                // Buttons with checkmarks rather than a Picker: a Picker directly inside a
+                // Menu causes the visible pulsing glitch fixed in the History menu.
+                Menu {
+                    ForEach(VehicleMode.allCases) { mode in
+                        Button {
+                            Haptics.selection()
+                            runStore.setMode(id: recording.id, to: mode)
+                        } label: {
+                            if currentMode == mode {
+                                Label(mode.rawValue, systemImage: "checkmark")
+                            } else {
+                                Label(mode.rawValue, systemImage: mode.icon)
+                            }
+                        }
+                    }
+                } label: {
+                    Image(systemName: currentMode.icon)
+                }
+
                 if isExporting {
                     ProgressView()
                 } else {

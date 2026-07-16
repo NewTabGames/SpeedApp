@@ -99,7 +99,7 @@ struct AboutView: View {
             ),
             Feature(
                 name: "Per-vehicle history",
-                detail: "Every ride is tagged with the vehicle you used. Filter your history by vehicle, and see lifetime totals per vehicle or all together."
+                detail: "Every ride is tagged with the vehicle you used. Filter your history by vehicle, and see lifetime totals per vehicle or all together. Recorded under the wrong vehicle? Press and hold a ride in History, or use the vehicle button on the ride's page, to reassign it."
             )
         ]),
         FeatureSection(title: "Speed", icon: "speedometer", items: [

@@ -184,6 +184,15 @@ final class RunStore: ObservableObject {
         save()
     }
 
+    /// Reassigns a ride to a different vehicle — for when you record under the wrong one.
+    /// Everything derived from mode (per-vehicle records, lifetime totals, battery range,
+    /// history filters, trends) is computed live from the rides, so it all updates instantly.
+    func setMode(id: UUID, to mode: VehicleMode) {
+        guard let index = recordings.firstIndex(where: { $0.id == id }) else { return }
+        recordings[index].mode = mode
+        save()
+    }
+
     func delete(id: UUID) {
         recordings.removeAll { $0.id == id }
         save()
