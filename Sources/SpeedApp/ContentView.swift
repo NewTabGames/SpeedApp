@@ -1215,7 +1215,6 @@ struct RecordingDetailView: View {
 struct SettingsView: View {
     @EnvironmentObject var settings: SettingsStore
     @EnvironmentObject var runStore: RunStore
-    @EnvironmentObject var location: LocationManager
     @EnvironmentObject var heatmapStore: HeatmapStore
 
     @State private var alertSpeedText: String = ""
@@ -1473,13 +1472,6 @@ struct SettingsView: View {
                 }
 
                 Section {
-                    Button("Reset \(settings.vehicleMode.rawValue) Settings", role: .destructive) {
-                        Haptics.warning()
-                        settings.resetCurrentModeSettings()
-                    }
-                    Button("Reset Max Speed", role: .destructive) {
-                        location.resetMaxSpeed()
-                    }
                     Button("Clear All Recordings", role: .destructive) {
                         requestClear()
                     }
