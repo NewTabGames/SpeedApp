@@ -93,14 +93,22 @@ private struct HeatmapMap: UIViewRepresentable {
         map.setRegion(paddedRegion, animated: false)
         applyStyle(to: map)
         addOverlay(to: map)
+        context.coordinator.lastImage = image
         return map
     }
 
     func updateUIView(_ map: MKMapView, context: Context) {
         applyStyle(to: map)
-        // Replace the overlay if the image changed.
-        map.removeOverlays(map.overlays)
-        addOverlay(to: map)
+
+        // Only touch the overlay when the image actually changed. SwiftUI calls this for
+        // ANY state change in the ancestor views (a published flag flipping, a re-render),
+        // and tearing down + re-adding the overlay each time makes the heat layer visibly
+        // blink for no reason.
+        if context.coordinator.lastImage !== image {
+            context.coordinator.lastImage = image
+            map.removeOverlays(map.overlays)
+            addOverlay(to: map)
+        }
     }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
@@ -129,6 +137,9 @@ private struct HeatmapMap: UIViewRepresentable {
     }
 
     final class Coordinator: NSObject, MKMapViewDelegate {
+        /// The image currently applied as an overlay — the churn guard in updateUIView.
+        var lastImage: UIImage?
+
         func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
             guard let heat = overlay as? HeatmapOverlay else {
                 return MKOverlayRenderer(overlay: overlay)

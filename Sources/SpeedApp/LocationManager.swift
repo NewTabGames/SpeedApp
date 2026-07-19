@@ -143,7 +143,9 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
         super.init()
         manager.delegate = self
         manager.desiredAccuracy = kCLLocationAccuracyBestForNavigation
-        manager.activityType = .fitness
+        // .otherNavigation, never .automotiveNavigation — the latter road-snaps fixes. The
+        // real per-vehicle type is applied on top of this via applyVehicleMode.
+        manager.activityType = .otherNavigation
         manager.distanceFilter = kCLDistanceFilterNone
         // Keeps the little arrow in the status bar while recording in the background, which
         // iOS requires for background location. Nothing pops up unexpectedly.

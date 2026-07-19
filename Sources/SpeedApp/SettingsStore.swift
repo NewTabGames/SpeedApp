@@ -256,9 +256,13 @@ enum VehicleMode: String, CaseIterable, Codable, Identifiable, Equatable, Sendab
     /// Tells CoreLocation what kind of movement to expect, which tunes its filtering.
     var activityType: CLActivityType {
         switch self {
-        case .car, .motorcycle: return .automotiveNavigation
-        case .scooter:          return .otherNavigation
-        case .walking:          return .fitness
+        // Deliberately NOT .automotiveNavigation. That activity type lets iOS snap fixes to
+        // the road network — great for a turn-by-turn app, but it means a ride on a sidewalk
+        // or bike path gets dragged onto the parallel road before the app ever sees the
+        // points. .otherNavigation gives vehicle-appropriate GPS handling without that
+        // road-snapping, so the recorded track follows where you actually went.
+        case .car, .motorcycle, .scooter: return .otherNavigation
+        case .walking:                    return .fitness
         }
     }
 

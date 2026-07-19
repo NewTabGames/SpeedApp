@@ -522,8 +522,14 @@ struct RecordView: View {
         guard let result = pendingResult else { return }
         pendingResult = nil
 
-        let start = logBattery ? Double(batteryStartText) : nil
-        let end = logBattery ? Double(batteryEndText) : nil
+        // Trim and clamp to 0-100: "85 " should parse, and a typo like 850 shouldn't be
+        // allowed to poison the range estimate maths.
+        func batteryValue(_ text: String) -> Double? {
+            guard let v = Double(text.trimmingCharacters(in: .whitespaces)) else { return nil }
+            return min(max(v, 0), 100)
+        }
+        let start = logBattery ? batteryValue(batteryStartText) : nil
+        let end = logBattery ? batteryValue(batteryEndText) : nil
 
         // Use the returned ride rather than assuming recordings.first — a ride under 2
         // seconds isn't saved at all, and we'd otherwise be inspecting the *previous* ride
@@ -577,9 +583,8 @@ struct RecordView: View {
     }
 
     private func elapsedString(_ seconds: Double) -> String {
-        let mins = Int(seconds) / 60
-        let secs = Int(seconds) % 60
-        return String(format: "%02d:%02d", mins, secs)
+        // Shares the app-wide formatter so a 90-minute ride reads 1:30:00, not 90:00.
+        elapsedLabel(seconds)
     }
 }
 
@@ -860,6 +865,9 @@ struct HistoryView: View {
             showClearConfirmation = true
         } else {
             runStore.clearAllRecordings()
+            // The confirmed path clears the heatmap too; this path must match, or a stale
+            // heatmap survives clearing your history.
+            heatmapStore.clear()
         }
     }
 }
@@ -1507,6 +1515,9 @@ struct SettingsView: View {
                 availableVoices = VoiceCatalog.availableVoices()
             }
             .onChange(of: settings.unit) { _, _ in syncAlertText() }
+            // Each vehicle has its own alert value; without this the field keeps showing the
+            // previous vehicle's number and edits would write that stale value to the new one.
+            .onChange(of: settings.vehicleMode) { _, _ in syncAlertText() }
         }
         .tint(settings.accent.color)
         .sheet(isPresented: $showAbout) {
@@ -1550,6 +1561,7 @@ struct SettingsView: View {
             showClearConfirmation = true
         } else {
             runStore.clearAllRecordings()
+            heatmapStore.clear()
         }
     }
 
@@ -1639,4 +1651,6 @@ struct SettingsView: View {
         .environmentObject(LocationManager())
         .environmentObject(RunStore())
         .environmentObject(SettingsStore())
+        .environmentObject(NavigationStore())
+        .environmentObject(HeatmapStore())
 }

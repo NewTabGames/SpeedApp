@@ -8,6 +8,21 @@ struct TripReplayView: View {
     let recording: SpeedRecording
     @EnvironmentObject var settings: SettingsStore
 
+    /// Route data for DRAWING, downsampled once at init. The map body re-evaluates 20x a
+    /// second during playback, and rebuilding two polylines from every raw GPS sample
+    /// (an hour ride is ~3,600 points) each time would stutter. ~300 points is visually
+    /// identical. Interpolation and the graph still use the full-resolution samples.
+    private let drawSamples: [SpeedSample]
+    private let drawCoords: [CLLocationCoordinate2D]
+
+    init(recording: SpeedRecording) {
+        self.recording = recording
+        self.drawSamples = downsampled(recording.samples, maxPoints: 300)
+        self.drawCoords = drawSamples.map {
+            CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude)
+        }
+    }
+
     /// Continuous playback position in ride-seconds. The marker interpolates between GPS
     /// samples using this, so playback is smooth instead of hopping sample-to-sample —
     /// and at 1× it tracks real wall-clock time.
@@ -77,10 +92,11 @@ struct TripReplayView: View {
     }
 
     /// The portion of the route already travelled, drawn brighter than the rest.
+    /// Built from the downsampled draw list — see drawSamples.
     private var travelledCoordinates: [CLLocationCoordinate2D] {
-        let count = (samples.lastIndex { $0.offsetSeconds <= playbackTime } ?? 0) + 1
+        let count = (drawSamples.lastIndex { $0.offsetSeconds <= playbackTime } ?? 0) + 1
         guard count > 1 else { return [] }
-        return Array(coordinates.prefix(count))
+        return Array(drawCoords.prefix(count))
     }
 
     var body: some View {
@@ -100,8 +116,8 @@ struct TripReplayView: View {
 
     private var mapSection: some View {
         Map(position: $cameraPosition) {
-            // Full route, dimmed.
-            MapPolyline(coordinates: coordinates)
+            // Full route, dimmed. Downsampled — see drawSamples.
+            MapPolyline(coordinates: drawCoords)
                 .stroke(settings.accent.color.opacity(0.25), lineWidth: 5)
 
             // Route covered so far, solid.
@@ -110,7 +126,7 @@ struct TripReplayView: View {
                     .stroke(settings.accent.color, lineWidth: 5)
             }
 
-            if let first = coordinates.first {
+            if let first = drawCoords.first {
                 Marker("Start", coordinate: first)
                     .tint(.green)
             }
@@ -329,6 +345,13 @@ struct TripReplayView: View {
         // update doesn't snap to an arbitrary distance.
         let spread = max(span.latitudeDelta, span.longitudeDelta)
         cameraDistance = min(max(spread * 40_000, 400), 1_500)
+
+        // Seed the gesture-detection baseline too. The initial region set above makes the
+        // map report a camera that differs from the defaults these started at, which would
+        // register as a phantom "user gesture" the moment the view opens.
+        lastAppliedHeading = cameraHeading
+        lastAppliedPitch = cameraPitch
+        lastAppliedDistance = cameraDistance
     }
 
     /// Keeps the camera pointed at the marker without touching how it's oriented.
