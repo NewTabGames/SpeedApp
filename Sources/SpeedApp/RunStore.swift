@@ -32,7 +32,10 @@ struct SpeedRecording: Identifiable, Codable, Equatable, Sendable {
     }
 
     static func == (lhs: SpeedRecording, rhs: SpeedRecording) -> Bool {
-        lhs.id == rhs.id && lhs.name == rhs.name
+        // mode is included so a vehicle reassignment reads as a change — SwiftUI's list
+        // diffing uses this, and without mode here the row's vehicle icon wouldn't refresh
+        // after "Change Vehicle" until something else redrew the list.
+        lhs.id == rhs.id && lhs.name == rhs.name && lhs.mode == rhs.mode
     }
 
     // MARK: - Decoding

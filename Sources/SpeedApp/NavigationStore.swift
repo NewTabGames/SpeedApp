@@ -40,6 +40,9 @@ final class NavigationStore: NSObject, ObservableObject, MKLocalSearchCompleterD
 
     /// Set externally from SettingsStore; 0.3 (slow/clear) to 0.6 (fast/natural).
     var speechRate: Float = 0.5
+    /// Whether spoken distances use metres/kilometres. The on-screen banner already follows
+    /// the chosen unit; without this the voice said "in 500 feet" to km/h users.
+    var usesMetricUnits: Bool = false
     /// Chosen voice identifier; resolved to an actual voice at speak time.
     var voiceIdentifier: String = VoiceCatalog.systemDefaultID
     /// Routing profile for the current vehicle. Walking gets footpath routes; everything
@@ -89,8 +92,20 @@ final class NavigationStore: NSObject, ObservableObject, MKLocalSearchCompleterD
         synthesizer.delegate = self
     }
 
+    private var lastSearchRegionCenter: CLLocationCoordinate2D?
+
     /// Biases search suggestions toward wherever the rider actually is.
+    ///
+    /// Called on every GPS fix, but only actually updates after ~250 m of movement.
+    /// Re-setting the completer's region can restart its suggestion fetch, and doing that
+    /// once a second while someone is mid-typing makes the suggestions list flicker.
     func updateSearchRegion(around coordinate: CLLocationCoordinate2D) {
+        if let last = lastSearchRegionCenter {
+            let moved = CLLocation(latitude: last.latitude, longitude: last.longitude)
+                .distance(from: CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude))
+            guard moved > 250 else { return }
+        }
+        lastSearchRegionCenter = coordinate
         completer.region = MKCoordinateRegion(
             center: coordinate,
             span: MKCoordinateSpan(latitudeDelta: 0.5, longitudeDelta: 0.5)
@@ -163,6 +178,11 @@ final class NavigationStore: NSObject, ObservableObject, MKLocalSearchCompleterD
     }
 
     func cancelDestination() {
+        // Releasing here (not only in stopNavigation) matters because arrival ends
+        // navigation through this path: the "You've Arrived" alert's OK button calls
+        // cancelDestination directly, and without this the audio session claimed at
+        // navigation start would be held forever after arriving.
+        releaseAudioSession()
         route = nil
         routeCoordinates = []
         destinationCoordinate = nil
@@ -431,14 +451,22 @@ final class NavigationStore: NSObject, ObservableObject, MKLocalSearchCompleterD
     // MARK: - Speech
 
     private func spokenDistance(_ meters: Double) -> String {
+        if usesMetricUnits {
+            if meters < 950 {
+                // Round to the nearest 50 m — "in 347 meters" sounds robotic.
+                let rounded = max((meters / 50).rounded() * 50, 50)
+                return "\(Int(rounded)) meters"
+            }
+            return String(format: "%.1f kilometers", meters / 1000)
+        }
+
         let feet = meters * 3.28084
         if feet < 1000 {
-            // Round to the nearest 50 ft — "in 347 feet" sounds robotic.
-            let rounded = (feet / 50).rounded() * 50
+            // Round to the nearest 50 ft, minimum 50 so it never says "0 feet".
+            let rounded = max((feet / 50).rounded() * 50, 50)
             return "\(Int(rounded)) feet"
         }
-        let miles = meters / 1609.34
-        return String(format: "%.1f miles", miles)
+        return String(format: "%.1f miles", meters / 1609.34)
     }
 
     /// How urgent an announcement is. The cooldown only silences the chatty stuff — anything

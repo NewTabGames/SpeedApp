@@ -406,22 +406,41 @@ final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelega
         signalQuality = speedIsTrustworthy ? .good : .weak
 
         if speedIsValid {
-            let mph = location.speed * 2.236936
-            let smoothed: Double
-            if let previous = emaSpeed {
-                smoothed = smoothingAlpha * mph + (1 - smoothingAlpha) * previous
-            } else {
-                smoothed = mph
-            }
-            emaSpeed = smoothed
+            // A mushy reading (huge speedAccuracy) may UPDATE an established speed, but
+            // never CREATE one. The first fixes after a cold GPS start routinely carry
+            // garbage speeds — letting one seed the average made the speedometer flash a
+            // phantom "7 mph" on app open while standing still.
+            //
+            // Seeding demands strictly more than updating:
+            //   - speedAccuracy must be KNOWN and tight. Cold-start fixes often report -1
+            //     ("unknown"), which is fine to fold into an established average but is not
+            //     evidence you're actually moving.
+            //   - horizontalAccuracy must be decent (≤20 m). Position error is what the
+            //     phantom speed is computed FROM, so a loose fix can't be a baseline.
+            // Once a baseline exists, mushy fixes still flow into it, so the display keeps
+            // working under bridges where accuracy degrades mid-ride.
+            let goodEnoughToSeed = location.speedAccuracy >= 0
+                && location.speedAccuracy <= 4
+                && location.horizontalAccuracy <= 20
 
-            // The live speedometer always updates from a valid reading, even a mushy one —
-            // but only trustworthy readings are allowed to set the max-speed record, so a
-            // single glitchy fix can't hand you a fake 70 mph personal best (or a false
-            // speed-limit alert).
-            speedMph = smoothed
-            if speedIsTrustworthy, smoothed > maxSpeedMph {
-                maxSpeedMph = smoothed
+            if emaSpeed != nil || goodEnoughToSeed {
+                let mph = location.speed * 2.236936
+                let smoothed: Double
+                if let previous = emaSpeed {
+                    smoothed = smoothingAlpha * mph + (1 - smoothingAlpha) * previous
+                } else {
+                    smoothed = mph
+                }
+                emaSpeed = smoothed
+
+                // The live speedometer updates even from a mushy reading — but only
+                // trustworthy readings are allowed to set the max-speed record, so a single
+                // glitchy fix can't hand you a fake 70 mph personal best (or a false
+                // speed-limit alert).
+                speedMph = smoothed
+                if speedIsTrustworthy, smoothed > maxSpeedMph {
+                    maxSpeedMph = smoothed
+                }
             }
         }
 

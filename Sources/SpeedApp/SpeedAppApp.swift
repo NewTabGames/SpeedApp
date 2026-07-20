@@ -54,6 +54,7 @@ struct SpeedAppApp: App {
                     locationManager.autoPauseDelay = settings.autoPauseDelaySeconds
                     navigation.speechRate = Float(settings.voiceSpeechRate)
                     navigation.voiceIdentifier = settings.voiceIdentifier
+                    navigation.usesMetricUnits = settings.unit == .kmh
                     Haptics.enabled = settings.hapticsEnabled
                     syncScreenAwake()
                 }
@@ -74,6 +75,9 @@ struct SpeedAppApp: App {
                 }
                 .onChange(of: settings.voiceSpeechRate) { _, newValue in
                     navigation.speechRate = Float(newValue)
+                }
+                .onChange(of: settings.unit) { _, newValue in
+                    navigation.usesMetricUnits = newValue == .kmh
                 }
                 .onChange(of: settings.voiceIdentifier) { _, newValue in
                     navigation.voiceIdentifier = newValue
