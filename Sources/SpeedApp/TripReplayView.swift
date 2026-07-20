@@ -304,9 +304,11 @@ struct TripReplayView: View {
     // MARK: - Playback
 
     private func togglePlayback() {
-        // Restarting from the end should replay from the beginning.
+        // Restarting from the end should replay from the beginning — and the camera should
+        // snap back with it, not linger on the finish until the first tick catches up.
         if !isPlaying && playbackTime >= totalDuration {
             playbackTime = 0
+            recenter()
         }
         isPlaying.toggle()
     }
