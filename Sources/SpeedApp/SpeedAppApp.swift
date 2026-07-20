@@ -12,16 +12,9 @@ struct SpeedAppApp: App {
     @StateObject private var heatmapStore = HeatmapStore()
 
     init() {
-        // Deliberately does NOT activate the audio session here.
-        //
-        // Activating at launch meant Spotify stayed quiet the whole time the app was open.
-        // NavigationStore owns the session instead: claimed when navigation starts, released
-        // when it ends (stop or arrival). With .duckOthers + .mixWithOthers, iOS only dips
-        // other audio while a direction is actually being spoken — and holding the session
-        // for the whole navigation is what keeps speech working after the screen locks,
-        // since a backgrounded app can't activate a session from cold. Do not "optimize"
-        // this back to per-utterance activate/release; that reintroduces the bug where
-        // guidance went silent as soon as the phone locked.
+        // Deliberately does NOT activate the audio session here. NavigationStore claims it
+        // for the duration of a navigation session (see its audio-session notes); claiming
+        // it at launch made music stay ducked the whole time the app was open.
     }
 
     /// The screen should stay awake if we're recording (and the user wants it to) or if
@@ -42,17 +35,16 @@ struct SpeedAppApp: App {
         }
     }
 
-    // The view is assembled in layers, each its own computed property. One flat chain of
-    // 15 modifiers with a dozen closures is a single giant expression, and the Release
-    // build's type-checker gave up on it ("unable to type-check this expression in
-    // reasonable time"). Splitting the chain gives the compiler small, independent
-    // expressions instead. Behavior is identical.
+    // The view is assembled in SMALL layers, each its own computed property, with AnyView
+    // between them. The Release build's type-checker has to solve each modifier chain as one
+    // expression, and both a 15-modifier chain and a 10-modifier chain have now failed with
+    // "unable to type-check this expression in reasonable time". AnyView erases the
+    // accumulated generic type at each boundary, so every layer stays a small independent
+    // problem no matter how many more syncs get added later. At the app root this costs
+    // nothing measurable — these re-evaluate only when a setting changes.
 
     private var rootView: some View {
-        syncedView
-            .onChange(of: locationManager.isRecording) { _, _ in syncScreenAwake() }
-            .onChange(of: settings.keepScreenAwake) { _, _ in syncScreenAwake() }
-            .onChange(of: navigation.isNavigating) { _, _ in syncScreenAwake() }
+        observationLayer
             // Coming back from iOS Settings — the rider may have just changed the
             // location permission, so re-read it rather than showing a stale warning.
             .onChange(of: scenePhase) { _, phase in
@@ -67,35 +59,58 @@ struct SpeedAppApp: App {
             }
     }
 
-    private var syncedView: some View {
-        baseView
-            .onChange(of: settings.smoothing) { _, v in locationManager.smoothingAlpha = v.alpha }
-            .onChange(of: settings.gpsAccuracy) { _, v in locationManager.applyAccuracyMode(v) }
-            .onChange(of: settings.autoPauseEnabled) { _, v in locationManager.autoPauseEnabled = v }
-            .onChange(of: settings.autoPauseSpeedMph) { _, v in locationManager.autoPauseSpeedThreshold = v }
-            .onChange(of: settings.autoPauseDelaySeconds) { _, v in locationManager.autoPauseDelay = v }
-            .onChange(of: settings.voiceSpeechRate) { _, v in navigation.speechRate = Float(v) }
-            .onChange(of: settings.unit) { _, v in navigation.usesMetricUnits = v == .kmh }
-            .onChange(of: settings.voiceIdentifier) { _, v in navigation.voiceIdentifier = v }
-            .onChange(of: settings.hapticsEnabled) { _, v in Haptics.enabled = v }
-            // Switching vehicle re-tunes GPS filtering and the routing profile, and
-            // swaps in that vehicle's own settings (handled inside SettingsStore).
-            .onChange(of: settings.vehicleMode) { _, v in
-                locationManager.applyVehicleMode(v)
-                navigation.transportType = v.transportType
-            }
+    /// Screen-awake and haptics observation.
+    private var observationLayer: AnyView {
+        AnyView(
+            voiceSyncLayer
+                .onChange(of: locationManager.isRecording) { _, _ in syncScreenAwake() }
+                .onChange(of: settings.keepScreenAwake) { _, _ in syncScreenAwake() }
+                .onChange(of: navigation.isNavigating) { _, _ in syncScreenAwake() }
+                .onChange(of: settings.hapticsEnabled) { _, v in Haptics.enabled = v }
+        )
     }
 
-    private var baseView: some View {
-        ContentView()
-            .environmentObject(locationManager)
-            .environmentObject(runStore)
-            .environmentObject(settings)
-            .environmentObject(navigation)
-            .environmentObject(heatmapStore)
-            .preferredColorScheme(settings.appearance.colorScheme)
-            .tint(settings.accent.color)
-            .onAppear { applyInitialSettings() }
+    /// Voice and unit syncs into NavigationStore.
+    private var voiceSyncLayer: AnyView {
+        AnyView(
+            gpsSyncLayer
+                .onChange(of: settings.voiceSpeechRate) { _, v in navigation.speechRate = Float(v) }
+                .onChange(of: settings.voiceIdentifier) { _, v in navigation.voiceIdentifier = v }
+                .onChange(of: settings.unit) { _, v in navigation.usesMetricUnits = v == .kmh }
+                // Switching vehicle re-tunes GPS filtering and the routing profile, and
+                // swaps in that vehicle's own settings (handled inside SettingsStore).
+                .onChange(of: settings.vehicleMode) { _, v in
+                    locationManager.applyVehicleMode(v)
+                    navigation.transportType = v.transportType
+                }
+        )
+    }
+
+    /// GPS tuning syncs into LocationManager.
+    private var gpsSyncLayer: AnyView {
+        AnyView(
+            baseView
+                .onChange(of: settings.smoothing) { _, v in locationManager.smoothingAlpha = v.alpha }
+                .onChange(of: settings.gpsAccuracy) { _, v in locationManager.applyAccuracyMode(v) }
+                .onChange(of: settings.autoPauseEnabled) { _, v in locationManager.autoPauseEnabled = v }
+                .onChange(of: settings.autoPauseSpeedMph) { _, v in locationManager.autoPauseSpeedThreshold = v }
+                .onChange(of: settings.autoPauseDelaySeconds) { _, v in locationManager.autoPauseDelay = v }
+        )
+    }
+
+    /// The content view with its environment, appearance, and launch sync.
+    private var baseView: AnyView {
+        AnyView(
+            ContentView()
+                .environmentObject(locationManager)
+                .environmentObject(runStore)
+                .environmentObject(settings)
+                .environmentObject(navigation)
+                .environmentObject(heatmapStore)
+                .preferredColorScheme(settings.appearance.colorScheme)
+                .tint(settings.accent.color)
+                .onAppear { applyInitialSettings() }
+        )
     }
 
     /// One-time push of every persisted setting into the live objects at launch.
